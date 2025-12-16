@@ -9,7 +9,7 @@ const {
   deleteContact,
 } = require("../Controllers/Contact");
 
-router.post("/create", protect, createContact);
+router.post("/create", createContact);
 router.get("/all", protect, authorizeRoles("admin","vendor"), getAllContacts);
 router.get("/:id", protect, authorizeRoles("admin","vendor"), getContactById);
 router.put("/:id", protect, authorizeRoles("admin","vendor"), updateContact);

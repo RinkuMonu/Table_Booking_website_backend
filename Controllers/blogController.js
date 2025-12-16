@@ -144,9 +144,7 @@ exports.listBlogs = async (req, res) => {
       Blog.find(filter)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit)
-        .select("title slug description image createdAt author") // list fields
-        .lean()
+        .limit(limit) // 👈 THIS IS THE FIX
     ]);
 
     const totalPages = Math.ceil(total / limit);
@@ -170,7 +168,7 @@ exports.getBlog = async (req, res) => {
   try {
     const { slugOrId } = req.params;
     const query = mongooseIdCheck(slugOrId) ? { _id: slugOrId } : { slug: slugOrId };
-    const blog = await Blog.findOne(query).lean();
+    const blog = await Blog.findOne(query);
     if (!blog) return res.status(404).json({ message: "Blog not found" });
 
     return res.json({ blog });
