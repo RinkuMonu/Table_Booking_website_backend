@@ -6,6 +6,7 @@ const Referral = require("../Models/ReferralModel");
 const Setting = require("../Models/SettingModel");
 const { generateRefId } = require("../Utils/generateRefId");
 const { updateUserLocation } = require('../Utils/locationUtils');
+const e = require("express");
 // const EMAIL_API = "https://api.7uniqueverfiy.com/api/verify/email_checker_v1";
 const MOBILE_API = "https://api.7uniqueverfiy.com/api/verify/mobile_operator";
 
@@ -16,8 +17,8 @@ exports.verifyMobile = async (req, res) => {
     if (!mobile) {
       return res.status(400).json({ message: "Mobile number is required." });
     }
-    
-    
+
+
     // 1. Mobile Format/Operator Verification
     const refid = generateRefId();
 
@@ -46,9 +47,9 @@ exports.verifyMobile = async (req, res) => {
     }
 
     const userDoc = await User.findOneAndUpdate(
-      { mobile }, 
-      { mobile, lastVerifiedAt: new Date(), mobileVerified: true }, 
-      { upsert: true, new: true, runValidators: true } 
+      { mobile },
+      { mobile, lastVerifiedAt: new Date(), mobileVerified: true },
+      { upsert: true, new: true, runValidators: true }
     );
 
     // 3. Return Success Response
@@ -67,109 +68,110 @@ exports.verifyMobile = async (req, res) => {
     let logDetails = error.message;
 
     if (error.response) {
-        statusCode = error.response.status || 400; 
-        logDetails = `API Status Error ${statusCode}: ${JSON.stringify(error.response.data)}`;
-        clientMessage = "External Verification Service Failed (Check API Key/Credentials).";
-        
+      statusCode = error.response.status || 400;
+      logDetails = `API Status Error ${statusCode}: ${JSON.stringify(error.response.data)}`;
+      clientMessage = "External Verification Service Failed (Check API Key/Credentials).";
+
     } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-        statusCode = 503;
-        logDetails = `Network Error: ${error.code} - Check API URLs or connection.`;
-        clientMessage = "Connection to external service failed (Network Issue).";
+      statusCode = 503;
+      logDetails = `Network Error: ${error.code} - Check API URLs or connection.`;
+      clientMessage = "Connection to external service failed (Network Issue).";
     }
     else if (error.name === 'ValidationError') {
-        statusCode = 400;
-        clientMessage = "Database validation failed.";
-        logDetails = `DB Validation Error: ${error.message}`;
+      statusCode = 400;
+      clientMessage = "Database validation failed.";
+      logDetails = `DB Validation Error: ${error.message}`;
     }
 
     console.error(`🔴 Mobile Verification and Save Error (${statusCode}):`, logDetails);
-    
-    res.status(statusCode).json({ 
-        success: false, 
-        error: clientMessage,
+    console.error(`Stack Trace:`, error);
+
+    res.status(statusCode).json({
+      success: false,
+      error: clientMessage,
     });
   }
 }
 
 exports.verifyMail = async (req, res) => {
   try {
-     const { email, mobile } = req.body;
-     
-     if (!mobile || !email) {
-         return res.status(400).json({ message: "Mobile number and Email are required in the request body." });
-     }
-    
+    const { email, mobile } = req.body;
+
+    if (!mobile || !email) {
+      return res.status(400).json({ message: "Mobile number and Email are required in the request body." });
+    }
+
     console.log("Attempting Email Verification for:", email);
     const refid = generateRefId();
     const emailVerify = await axios.post(
-         "https://control.msg91.com/api/v5/email/validate",
-         { email,refid },
-         { 
-            headers: { 
-               "content-type": "application/json",
-               "x-env": process.env["X-Env"], 
-               "client-id": process.env["Client-Id"],
-               "authorization": process.env.Authorization,
-               "authkey": process.env.MSG91_AUTH_KEY,
-            } 
-         }
-     );
+      "https://control.msg91.com/api/v5/email/validate",
+      { email, refid },
+      {
+        headers: {
+          "content-type": "application/json",
+          "x-env": process.env["X-Env"],
+          "client-id": process.env["Client-Id"],
+          "authorization": process.env.Authorization,
+          "authkey": process.env.MSG91_AUTH_KEY,
+        }
+      }
+    );
     console.log("EEEE Email Verification API Response:", emailVerify.data);
 
-     // 3. Check the response from the external API
-   // 3. Check based on email verification result
-const emailResult = emailVerify.data?.data?.result?.result;  
+    // 3. Check the response from the external API
+    // 3. Check based on email verification result
+    const emailResult = emailVerify.data?.data?.result?.result;
 
-if (emailResult !== "deliverable") {
-    return res.status(400).json({
+    if (emailResult !== "deliverable") {
+      return res.status(400).json({
         success: false,
         message: "Email is not deliverable. Verification failed.",
         emailStatus: emailResult
+      });
+    }
+
+
+    // 4. Find User by Mobile and Update Email/Verification Status
+    const user = await User.findOneAndUpdate(
+      { mobile }, // Mobile number के आधार पर यूज़र को खोजें
+      {
+        email: email, // नए Email को अपडेट करें
+        emailVerified: true
+      },
+      {
+        new: true,
+        upsert: false
+      }
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found with this mobile number. Update failed.",
+      });
+    }
+
+    // 5. Success Response
+    return res.status(200).json({
+      success: true,
+      message: "Email successfully verified and user record updated.",
+      userId: user._id,
+      updatedEmail: user.email
     });
-}
 
-    
-     // 4. Find User by Mobile and Update Email/Verification Status
-     const user = await User.findOneAndUpdate(
-         { mobile }, // Mobile number के आधार पर यूज़र को खोजें
-         { 
-            email: email, // नए Email को अपडेट करें
-            emailVerified: true 
-         },
-         { 
-            new: true, 
-            upsert: false 
-         }
-     );
-
-     if (!user) {
-         return res.status(404).json({
-               success: false,
-               message: "User not found with this mobile number. Update failed.",
-         });
-     }
-   
-     // 5. Success Response
-     return res.status(200).json({
-         success: true,
-         message: "Email successfully verified and user record updated.",
-         userId: user._id,
-         updatedEmail: user.email 
-     });
-     
   } catch (error) {
-      console.error("🔴 Email Verification and Update Error:", error.message);
-    
+    console.error("🔴 Email Verification and Update Error:", error.message);
+
     // API-specific error handling (if the external service fails)
     if (error.response) {
-        return res.status(error.response.status || 502).json({ 
-            success: false,
-            error: "External email verification service failed.",
-            details: error.response.data
-        });
+      return res.status(error.response.status || 502).json({
+        success: false,
+        error: "External email verification service failed.",
+        details: error.response.data
+      });
     }
-    
-      return res.status(500).json({ error: "Failed to verify email due to server error." });
+
+    return res.status(500).json({ error: "Failed to verify email due to server error." });
   }
 };
 
@@ -178,42 +180,43 @@ exports.registerUser = async (req, res) => {
     const { firstName, lastName, email, mobile, role } = req.body;
 
     if (!firstName || !lastName || !email || !mobile || !role) {
-        return res.status(400).json({ message: "Missing required fields." });
+      return res.status(400).json({ message: "Missing required fields." });
     }
-    if (!["user", "vendor","admin"].includes(role)) {
+    if (!["user", "vendor", "admin"].includes(role)) {
       return res.status(400).json({ message: "Invalid role. Choose 'user' or 'vendor' or 'admin'." });
     }
-    const verifiedUser = await User.findOne({ 
-        mobile: mobile,
-        mobileVerified: true,
-        emailVerified: true
+    const verifiedUser = await User.findOne({
+      mobile: mobile,
+      mobileVerified: true,
+      emailVerified: true
     });
-    
+    console.log("verifiedUser = ", verifiedUser);
+
     if (!verifiedUser) {
-        const initialUserCheck = await User.findOne({ mobile: mobile });
-        
-        // अगर user है लेकिन verified नहीं है, तो रोक दें
-        if (initialUserCheck) {
-             return res.status(403).json({ 
-                success: false, 
-                message: "Please complete both mobile and email verification before finalizing registration."
-             });
-        }
-        
+      const initialUserCheck = await User.findOne({ mobile: mobile });
+
+      // अगर user है लेकिन verified नहीं है, तो रोक दें
+      if (initialUserCheck) {
+        return res.status(403).json({
+          success: false,
+          message: "Please complete both mobile and email verification before finalizing registration."
+        });
+      }
+
     }
 
     const user = await User.findOneAndUpdate(
-      { mobile }, 
+      { mobile },
       {
         firstName,
         lastName,
-        email, 
+        email,
         role,
       },
-      { 
-          new: true,
-          upsert: true 
-      } 
+      {
+        new: true,
+        upsert: true
+      }
     );
 
     res.status(201).json({
@@ -223,8 +226,18 @@ exports.registerUser = async (req, res) => {
       user: user,
     });
   } catch (error) {
-    console.error("🔴 Final Registration Error:", error.message);
-    res.status(500).json({ error: "Final registration failed." });
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue || {})[0] || "Field";
+      return res.status(409).json({
+        success: false,
+        message: `${field} already in use by another account.`,
+      });
+    }
+    console.error("🔴 Final Registration Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Final registration failed. Please try again later.",
+    });
   }
 };
 
@@ -232,81 +245,71 @@ exports.sendOtpLogin = async (req, res) => {
   try {
     const { mobile } = req.body;
     if (!mobile) {
-      return res.status(400).json({ message: "Mobile number is required." });
+      return res.status(400).json({ success: false, message: "Mobile number is required." });
     }
+    const user = await User.findOne({ mobile });
+
+    if (!user) return res.status(404).json({ success: false, message: "User not found", regiter: false });
+
 
     // 1. Mobile Format/Operator Verification
     const refid = generateRefId();
 
     console.log("Attempting Mobile Verification for:", mobile);
-    const mobileVerify = await axios.post(
-      MOBILE_API,
-      { refid, mobile },
+
+    // 2. Generate OTP and Message
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 3. Send OTP using Fast2SMS
+    const payload = {
+      template_id: process.env.MSG91_TEMPLATE_ID,
+      recipients: [
+        {
+          mobiles: "91" + mobile,
+          OTP: otp,
+          name: "User",
+        },
+      ],
+    };
+
+    const response = await axios.post(
+      "https://control.msg91.com/api/v5/flow",
+      payload,
       {
         headers: {
-          "content-type": "application/json",
-          "x-env": process.env["X-Env"],
-          "client-id": process.env["Client-Id"],
-          "authorization": process.env.Authorization,
+          "Content-Type": "application/json",
+          authkey: process.env.MSG91_AUTH_KEY,
         },
       }
-    );
-    console.log("mobileVerify Success Response:", mobileVerify.data);
 
-    if (!mobileVerify.data.success) {
+    );
+    console.log("Fast2SMS Success Response:", response.data);
+
+    // Check if SMS sending was successful (Fast2SMS response structure check)
+    // You may need to adjust this check based on actual API response
+    if (response.data.type !== "success") {
+      console.error("SMS Gateway Error:", response.data.message);
       return res.status(400).json({
         success: false,
-        message: "Mobile verification failed or invalid number.",
-        response: mobileVerify.data,
+        message: "Mobile verified, but failed to send OTP.",
+        sms_response: response.data
       });
     }
 
-    // --- ✅ NEW OTP GENERATION AND SENDING LOGIC ---
-    
-    // 2. Generate OTP and Message
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const message = `Aapka login OTP hai: ${otp}. Kripya iska upyog karein.`;
-    
-    // 3. Send OTP using Fast2SMS
-    const smsResponse = await axios.post( 
-      "https://www.fast2sms.com/dev/bulkV2",
-      { 
-        message: message,
-        language: "english",
-        route: "v3",
-        numbers: mobile 
-      },
-      { headers: { authorization: process.env.FAST2SMS_API_KEY } }
-    );
-    console.log("Fast2SMS Success Response:", smsResponse.data);
-    
-    // Check if SMS sending was successful (Fast2SMS response structure check)
-    // You may need to adjust this check based on actual API response
-    if (smsResponse.data.return === false) { 
-        console.error("SMS Gateway Error:", smsResponse.data.message);
-        return res.status(502).json({
-            success: false,
-            message: "Mobile verified, but failed to send OTP.",
-            sms_response: smsResponse.data
-        });
-    }
-
-    // --- ✅ UPDATE DATABASE WITH NEW OTP ---
-    
     // 4. Save/Update OTP in Database (upsert: true will create if not found)
     const userDoc = await User.findOneAndUpdate(
-      { mobile }, 
-      { 
-         otp: otp, // 👈 OTP को डेटाबेस में सेव करें
-         mobile: mobile, 
-         lastVerifiedAt: new Date(), 
-         mobileVerified: true // या इसे false रखें अगर आप OTP verify होने के बाद true करना चाहते हैं
-      }, 
-      { upsert: true, new: true, runValidators: true } 
+      { mobile },
+      {
+        otp: otp, // 👈 OTP को डेटाबेस में सेव करें
+        mobile: mobile,
+        lastVerifiedAt: new Date(),
+        mobileVerified: true // या इसे false रखें अगर आप OTP verify होने के बाद true करना चाहते हैं
+      },
+      { upsert: true, new: true, runValidators: true }
     );
 
     // --- ✅ SUCCESS RESPONSE ---
-    
+
     // 5. Return Success Response
     res.status(200).json({
       success: true,
@@ -315,104 +318,83 @@ exports.sendOtpLogin = async (req, res) => {
     });
 
   } catch (error) {
-    let statusCode = 500;
-    let clientMessage = "An unknown error occurred during OTP process.";
-    let logDetails = error.message;
-
-    if (error.response) {
-        statusCode = error.response.status || 400; 
-        logDetails = `API Status Error ${statusCode}: ${JSON.stringify(error.response.data)}`;
-        clientMessage = "External Service Failed (Check API Key/Credentials).";
-        
-    } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-        statusCode = 503;
-        logDetails = `Network Error: ${error.code} - Check API URLs or connection.`;
-        clientMessage = "Connection to external service failed (Network Issue).";
-    }
-    else if (error.name === 'ValidationError') {
-        statusCode = 400;
-        clientMessage = "Database validation failed.";
-        logDetails = `DB Validation Error: ${error.message}`;
-    }
-
-    console.error(`🔴 Mobile OTP Send Error (${statusCode}):`, logDetails);
-    
-    res.status(statusCode).json({ 
-        success: false, 
-        error: clientMessage,
+    res.status(400).json({
+      success: false,
+      error: error.message,
     });
   }
 };
 
 exports.verifyOtpAndLogin = async (req, res) => {
-    try {
-        const { mobile, otp, latitude, longitude } = req.body; 
+  try {
+    const { mobile, otp, latitude, longitude } = req.body;
 
-        const user = await User.findOne({ mobile });
+    const user = await User.findOne({ mobile });
 
-        if (!user) return res.status(404).json({ message: "User not found" });
-        if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
-        
-        if (!user.referral) {
-            user.referral = generateRefId(); 
-        }
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
 
-        user.otp = null;
-        await user.save();
-
-        const token = jwt.sign(
-            { id: user._id, role: user.role },
-            process.env.JWT_SECRET,
-            { expiresIn: "7d" }
-        );
-
-        try {
-            const existingWallet = await Wallet.findOne({ userId: user._id });
-            if (!existingWallet) {
-                const newWallet = new Wallet({
-                    userId: user._id,
-                    balance: 0,
-                });
-                await newWallet.save();
-                console.log(`✅ New Wallet created for user ID: ${user._id}`);
-            } else {
-                 console.log(`Wallet already exists for user ID: ${user._id}. Skipping creation.`);
-            }
-        } catch (walletError) {
-             console.error("Warning: Failed to create or check user wallet:", walletError.message);
-        }
-
-        if (user.role === 'user' && latitude !== undefined && longitude !== undefined) {
-            try {
-                const lat = Number(latitude);
-                const lon = Number(longitude);
-
-                if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-                     await updateUserLocation(user._id, lat, lon);
-                } else {
-                    console.log(`User ${user._id} (role: ${user.role}) sent invalid coordinates.`);
-                }
-            } catch (locationError) {
-                console.error("Warning: Failed to update user location after login:", locationError.message);
-            }
-        } else if (user.role !== 'user') {
-            console.log(`User ${user._id} (role: ${user.role}) skipped location update.`);
-        } else {
-            console.log(`User ${user._id} logged in, but location data missing.`);
-        }
-
-        // --- Final Response ---
-        res.json({
-            success: true,
-            message: "Login successful",
-            token,
-            role: user.role,
-            user,
-        });
-    } catch (error) {
-        console.error("🔴 Login/OTP Verification Error:", error.message);
-        res.status(500).json({ error: error.message });
+    if (!user.referral) {
+      user.referral = generateRefId();
     }
+
+    user.otp = null;
+    await user.save();
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    try {
+      const existingWallet = await Wallet.findOne({ userId: user._id });
+      if (!existingWallet) {
+        const newWallet = new Wallet({
+          userId: user._id,
+          balance: 0,
+        });
+        await newWallet.save();
+        console.log(`New Wallet created for user ID: ${user._id}`);
+      } else {
+        console.log(`Wallet already exists for user ID: ${user._id}. Skipping creation.`);
+      }
+    } catch (walletError) {
+      console.error("Warning: Failed to create or check user wallet:", walletError.message);
+    }
+
+    if (user.role === 'user' && latitude !== undefined && longitude !== undefined) {
+      try {
+        const lat = Number(latitude);
+        const lon = Number(longitude);
+
+        if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+          await updateUserLocation(user._id, lat, lon);
+        } else {
+          console.log(`User ${user._id} (role: ${user.role}) sent invalid coordinates.`);
+        }
+      } catch (locationError) {
+        console.error("Warning: Failed to update user location after login:", locationError.message);
+      }
+    } else if (user.role !== 'user') {
+      console.log(`User ${user._id} (role: ${user.role}) skipped location update.`);
+    } else {
+      console.log(`User ${user._id} logged in, but location data missing.`);
+    }
+
+    // --- Final Response ---
+    res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      role: user.role,
+      _id: user._id,
+      user,
+    });
+  } catch (error) {
+    console.error("🔴 Login/OTP Verification Error:", error.message);
+    res.status(500).json({ error: error.message });
+  }
 };
 
 exports.forgotPassword = async (req, res) => {
@@ -474,7 +456,7 @@ exports.softDelete = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find({
-      role:{$ne:'admin'}
+      role: { $ne: 'admin' }
     });
     res.json({ success: true, users });
   } catch (error) {
@@ -492,84 +474,84 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-exports.updateUserProfile = async (req, res) => { 
-    if (!req.user || !req.user._id) {
-        return res.status(401).json({ success: false, message: "Unauthorized. Please ensure a valid token is provided." });
+exports.updateUserProfile = async (req, res) => {
+  if (!req.user || !req.user._id) {
+    return res.status(401).json({ success: false, message: "Unauthorized. Please ensure a valid token is provided." });
+  }
+  const userId = req.user._id;
+
+  try {
+    const currentUser = await User.findById(userId).select('email mobile');
+    console.log("currentUser = ", currentUser);
+
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "User not found in database for update." });
     }
-    const userId = req.user._id; 
-    
-    try {
-        const currentUser = await User.findById(userId).select('email mobile');
-        console.log("currentUser = ", currentUser);
+    const {
+      firstName,
+      lastName,
+      email,
+      mobile,
+      age,
+      gender,
+      address,
+      profilePicture
+    } = req.body;
 
-        if (!currentUser) {
-            return res.status(404).json({ success: false, message: "User not found in database for update." });
-        }
-        const { 
-            firstName, 
-            lastName, 
-            email, 
-            mobile,
-            age, 
-            gender, 
-            address, 
-            profilePicture 
-        } = req.body;
+    const updateData = {};
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (age) updateData.age = age;
+    if (gender) updateData.gender = gender;
+    if (address) updateData.address = address;
+    if (profilePicture) updateData.profilePicture = profilePicture;
 
-        const updateData = {};
-        if (firstName) updateData.firstName = firstName;
-        if (lastName) updateData.lastName = lastName;
-        if (age) updateData.age = age;
-        if (gender) updateData.gender = gender;
-        if (address) updateData.address = address;
-        if (profilePicture) updateData.profilePicture = profilePicture;
-        
-        // 🛑 EMAIL COMPARISON (currentUser.email se)
-        if (email && email !== currentUser.email) {
-            updateData.email = email;
-            updateData.emailVerified = false; 
-        }
-        
-        // 🛑 MOBILE COMPARISON (currentUser.mobile se)
-        if (mobile && mobile !== currentUser.mobile) {
-            updateData.mobile = mobile;
-            updateData.mobileVerified = false; 
-        }
-        
-        // Agar koi field update nahi ho rahi toh return kar sakte hain
-        if (Object.keys(updateData).length === 0) {
-             return res.status(200).json({ success: true, message: "No changes detected.", user: currentUser });
-        }
-
-
-        // 4. Database mein user ko ID se dhoondhkar update karna
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { $set: updateData },
-            { new: true, runValidators: true } 
-        );
-
-        // 5. Success Response
-        res.status(200).json({
-            success: true,
-            message: "Profile updated successfully!",
-            user: updatedUser,
-        });
-
-    } catch (error) {
-        if (error.code === 11000) { 
-            return res.status(400).json({ 
-                success: false, 
-                message: "Email or Mobile number already in use by another account." 
-            });
-        }
-        if (error.name === 'ValidationError') {
-             return res.status(400).json({ success: false, message: error.message });
-        }
-        
-        console.error("🔴 Profile Update Error:", error.message);
-        res.status(500).json({ success: false, error: "Failed to update profile." });
+    // 🛑 EMAIL COMPARISON (currentUser.email se)
+    if (email && email !== currentUser.email) {
+      updateData.email = email;
+      updateData.emailVerified = false;
     }
+
+    // 🛑 MOBILE COMPARISON (currentUser.mobile se)
+    if (mobile && mobile !== currentUser.mobile) {
+      updateData.mobile = mobile;
+      updateData.mobileVerified = false;
+    }
+
+    // Agar koi field update nahi ho rahi toh return kar sakte hain
+    if (Object.keys(updateData).length === 0) {
+      return res.status(200).json({ success: true, message: "No changes detected.", user: currentUser });
+    }
+
+
+    // 4. Database mein user ko ID se dhoondhkar update karna
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    // 5. Success Response
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully!",
+      user: updatedUser,
+    });
+
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Email or Mobile number already in use by another account."
+      });
+    }
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    console.error("🔴 Profile Update Error:", error.message);
+    res.status(500).json({ success: false, error: "Failed to update profile." });
+  }
 };
 
 //*******
@@ -590,7 +572,7 @@ exports.applyReferralCode = async (req, res) => {
     const referrer = await User.findOne({ referral: referralCode });
     if (!referrer) return res.status(404).json({ message: "Invalid referral code" });
 
-    
+
 
     // ✅ Prevent same mobile/email from using another referral again
     const existingReferral = await Referral.findOne({
@@ -705,6 +687,6 @@ exports.getReferralsByUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Admin Get User Referrals Error:", error);
-    res.status(500).json({ error: error.message });
-  }
+    res.status(500).json({ error: error.message });
+  }
 };
