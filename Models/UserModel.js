@@ -94,7 +94,7 @@ const userSchema = new mongoose.Schema({
 userSchema.virtual("profilePictureUrl").get(function () {
   if (!this.profilePicture) return null;
   const BASE_URL = process.env.APP_URL || "http://localhost:3000";
-  return `${BASE_URL}/uploads/${this.profilePicture}`;
+  return `${BASE_URL}/${this.profilePicture}`;
 });
 
 module.exports = mongoose.model("User", userSchema);
