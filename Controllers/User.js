@@ -430,11 +430,19 @@ exports.forgotPassword = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id;
     const { firstName, lastName, email, mobile, age, gender, address } = req.body;
 
     const updateData = { firstName, lastName, email, mobile, age, gender, address };
-    if (req.file) updateData.profilePicture = req.file.path;
+    if (req.file) {
+      const cleanPath = req.file.path.replace(/\\/g, "/");
+
+      updateData.profilePicture = `${req.protocol}://${req.get(
+        "host"
+      )}/${cleanPath}`;
+    }
+
+    console.log("Update Data:", updateData);
 
     const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
     res.json({ success: true, message: "Profile updated successfully", user: updatedUser });
@@ -466,7 +474,9 @@ exports.getAllUsers = async (req, res) => {
 
 exports.getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id);
+    console.log(req.user)
+    const user = await User.findById(req.user._id);
+    console.log("Fetched User:", user);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ success: true, user });
   } catch (error) {
