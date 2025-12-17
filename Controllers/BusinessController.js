@@ -199,7 +199,6 @@ exports.updateCommission = async (req, res) => {
   }
 };
 
-
 exports.addBranch = async (req, res) => {
   try {
     const vendorId = req.user?._id || req.body.vendorId;
@@ -262,7 +261,6 @@ exports.addBranch = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 
 // Branch update controller
