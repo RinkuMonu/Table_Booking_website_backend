@@ -3,20 +3,33 @@ const express = require("express");
 const router = express.Router();
 const upload = require("../Middleware/UploadMiddleware");
 const { protect } = require("../Middleware/AuthMiddleware");
-const { 
-  createBusiness, 
+const {
+  createBusiness,
   updateCommission,
-  addBranch, 
-  updateBusiness, 
-  getBusinessById, 
-  getBusinesses, 
+  addBranch,
+  updateBusiness,
+  getBusinessById,
+  getBusinesses,
   deleteBusiness,
   toggleStatus,
   updateBusinessStatus,
-  updateBranch
+  updateBranch,
+  globalSearch,
+  GlobalSearchSuggestions,
+  getRestaurants
 } = require("../Controllers/BusinessController");
 
 // Create business (multiple images)
+router.get(
+  "/get/search",
+  globalSearch
+);
+router.get(
+  "/get/restaurants",
+  getRestaurants
+);
+router.get("/search/suggestions", GlobalSearchSuggestions);
+
 router.post(
   "/",
   protect,
