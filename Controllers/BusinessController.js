@@ -671,8 +671,12 @@ exports.globalSearch = async (req, res) => {
     // 🔹 TYPE FILTER (veg / bar / drinks)
     // ----------------------------------
     if (type) {
-      businessFilter.foodType = new RegExp(type, "i");
+      businessFilter.categoryType = new RegExp(type, "i");
     }
+    if (foodCategory) {
+      businessFilter.foodType = new RegExp(foodCategory, "i");
+    }
+
 
     // ----------------------------------
     // 🔹 RATING FILTER
