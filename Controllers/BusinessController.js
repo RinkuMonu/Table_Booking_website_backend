@@ -376,7 +376,7 @@ exports.updateBusiness = async (req, res) => {
 
 
 exports.getBusinessById = async (req, res) => {
-  cosnole.log("getBusinessById called");
+  console.log("getBusinessById called");
   try {
     const { businessId } = req.params;
     if (!businessId)
