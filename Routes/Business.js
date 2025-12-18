@@ -24,6 +24,7 @@ router.get(
   "/get/search",
   globalSearch
 );
+
 router.get(
   "/get/restaurants",
   getRestaurants
