@@ -23,6 +23,7 @@ const branchSchema = new mongoose.Schema(
     images: [String],
     address: addressSchema,
     isActive: { type: Boolean, default: true }, // open to take bookings
+    isPopular: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // vendor who created
     meta: {
       sameMenuAsOtherBranch: { type: Boolean, default: false },
