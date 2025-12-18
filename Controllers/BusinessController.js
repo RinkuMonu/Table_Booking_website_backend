@@ -6,6 +6,8 @@ const Commission = require("../Models/CommissionModel");
 const Table = require("../Models/TableModel");
 const Schedule = require("../Models/ScheduleModel");
 const mongoose = require("mongoose");
+const BusinessModel = require("../Models/BusinessModel");
+const CategoryModel = require("../Models/CategoryModel");
 
 
 const copyMenuTablesSchedules = async (vendorId, businessId, sourceBranchId, targetBranchId) => {
@@ -121,7 +123,7 @@ exports.createBusiness = async (req, res) => {
           address: brAddress || {},
           isActive: typeof brRaw.isActive === "boolean" ? brRaw.isActive : true,
           createdBy: vendorId,
-        });  
+        });
 
         await branchDoc.save();
 
@@ -295,7 +297,7 @@ exports.updateBranch = async (req, res) => {
 
     // 1️⃣ Agar `address` diya hai (object ya string), use lo
     if (typeof parsedAddress === "string") {
-      try { parsedAddress = JSON.parse(parsedAddress); } catch (e) {}
+      try { parsedAddress = JSON.parse(parsedAddress); } catch (e) { }
     }
 
     // 2️⃣ Agar flat fields aaye hain (plotNo, street, city...), to unse address banao
@@ -411,8 +413,7 @@ exports.getBusinessById = async (req, res) => {
 exports.getBusinesses = async (req, res) => {
   try {
     const {
-      // req.body से vendorId को हटा दें या उसका उपयोग केवल Admin के लिए करें
-      vendorId, 
+      vendorId,
       page = 1,
       limit = 20,
       businessName,
@@ -426,21 +427,17 @@ exports.getBusinesses = async (req, res) => {
       nearby,
       topRated,
       activeOnly,
-      requestStatus, 
+      requestStatus,
     } = req.body;
 
     let filter = {};
 
-    // 💡 Role and User ID from Request (Authentication Middleware से प्राप्त)
     const userRole = req.user?.role;
-    const currentUserId = req.user?._id; 
+    const currentUserId = req.user?._id;
 
-    // --- 🔹 Role-based Business Filter (नया/संशोधित लॉजिक) ---
     if (userRole === 'vendor' && currentUserId) {
-      // ✅ VENDOR: केवल अपने vendorId से जुड़े बिज़नेस दिखाएं
       filter.vendorId = currentUserId;
     } else if (userRole === 'admin' && vendorId) {
-      // ✅ ADMIN: अगर req.body में vendorId दिया गया है, तो उसे फ़िल्टर करें
       filter.vendorId = vendorId;
     }
     // Note: अगर userRole 'admin' है और vendorId नहीं दिया गया है, तो सभी बिज़नेस दिखेंगे
@@ -461,7 +458,7 @@ exports.getBusinesses = async (req, res) => {
 
     // 🔹 Rating Filter (Top Rated Businesses)
     if (topRated) {
-      filter.averageRating = { $gte: 2 }; 
+      filter.averageRating = { $gte: 2 };
     }
 
     // ✅ New Filter
@@ -641,5 +638,383 @@ exports.updateBusinessStatus = async (req, res) => {
   } catch (error) {
     console.error("updateBusinessStatus error:", error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+exports.globalSearch = async (req, res) => {
+  try {
+    const {
+      q,
+      lat,
+      lng,
+      radius = 5000, // default 5 km
+      type,
+      foodCategory,
+      minPrice,
+      maxPrice,
+      rating,
+    } = req.query;
+    console.log("Global Search Params:", req.query);
+    // ----------------------------------
+    // 🔹 BASE BUSINESS FILTER
+    // ----------------------------------
+    let businessFilter = {
+      isActive: true,
+      requestStatus: "approved",
+    };
+    if (q == "popular") {
+      businessFilter.isPopular = true
+    }
+
+    // ----------------------------------
+    // 🔹 TYPE FILTER (veg / bar / drinks)
+    // ----------------------------------
+    if (type) {
+      businessFilter.foodType = new RegExp(type, "i");
+    }
+
+    // ----------------------------------
+    // 🔹 RATING FILTER
+    // ----------------------------------
+    if (rating) {
+      businessFilter.averageRating = { $gte: Number(rating) };
+    }
+
+    // ----------------------------------
+    // 🔹 NEARBY FILTER
+    // ----------------------------------
+    if (lat && lng) {
+      businessFilter.location = {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [Number(lng), Number(lat)],
+          },
+          $maxDistance: Number(radius) * 1000, // km → meter
+        },
+      };
+    }
+
+    // ----------------------------------
+    // 🔹 NO QUERY CASE
+    // ----------------------------------
+    if (!q || q.trim() === "") {
+      const businesses = await BusinessModel.find(businessFilter)
+        .populate("categories")
+        .populate("menuItems")
+        .lean();
+
+      return res.status(200).json({
+        success: true,
+        count: businesses.length,
+        data: businesses,
+      });
+    }
+
+    // ----------------------------------
+    // 🔹 KEYWORDS
+    // ----------------------------------
+    let keywords = [];
+    if (q && !["popular", "nearby"].includes(q.toLowerCase())) {
+      keywords = q.trim().toLowerCase().split(/\s+/);
+    }
+
+    // ----------------------------------
+    // 🔹 BUSINESS SEARCH
+    // ----------------------------------
+    const businessResults = await BusinessModel.find({
+      ...businessFilter,
+      $and: keywords.map((word) => ({
+        $or: [
+          { name: new RegExp(word, "i") },
+          { description: new RegExp(word, "i") },
+          { "address.street": new RegExp(word, "i") },
+          { "address.area": new RegExp(word, "i") },
+          { "address.city": new RegExp(word, "i") },
+        ],
+      })),
+    }).select("_id");
+
+    // ----------------------------------
+    // 🔹 CATEGORY SEARCH
+    // ----------------------------------
+    const categoryResults = await CategoryModel.find({
+      isActive: true,
+      ...(foodCategory && { name: new RegExp(foodCategory, "i") }),
+    }).select("businessId");
+
+    // ----------------------------------
+    // 🔹 ITEM SEARCH (Food + Price)
+    // ----------------------------------
+    let itemFilter = {
+      isAvailable: true,
+    };
+
+    if (foodCategory) {
+      itemFilter.category = new RegExp(foodCategory, "i");
+    }
+
+    if ((minPrice || maxPrice) && (foodCategory || q)) {
+      itemFilter["variants.price"] = {
+        ...(minPrice && { $gte: Number(minPrice) }),
+        ...(maxPrice && { $lte: Number(maxPrice) }),
+      };
+    }
+
+
+    const itemResults = await Item.find({
+      ...itemFilter,
+      $and: keywords.map((word) => ({
+        $or: [
+          { name: new RegExp(word, "i") },
+          { category: new RegExp(word, "i") },
+          { subcategory: new RegExp(word, "i") },
+          { description: new RegExp(word, "i") },
+        ],
+      })),
+    }).select("businessId");
+
+    // ----------------------------------
+    // 🔹 UNIQUE BUSINESS IDS
+    // ----------------------------------
+    const businessIds = new Set();
+
+    businessResults.forEach((b) => businessIds.add(b._id.toString()));
+    categoryResults.forEach((c) => c.businessId && businessIds.add(c.businessId.toString()));
+    itemResults.forEach((i) => i.businessId && businessIds.add(i.businessId.toString()));
+
+    // ----------------------------------
+    // 🔹 FINAL FETCH
+    // ----------------------------------
+    const businesses = await BusinessModel.find({
+      _id: { $in: [...businessIds] },
+      ...businessFilter,
+    })
+      .populate("categories")
+      .populate("menuItems")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      query: q,
+      count: businesses.length,
+      data: businesses,
+    });
+  } catch (error) {
+    console.error("Global Search Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// get resto for home section
+exports.getRestaurants = async (req, res) => {
+  try {
+    const {
+      q,
+      section,        // popular | nearby | all
+      type,           // restro | bar | club | cafe
+      lat,
+      lng,
+      radius = 5,
+      foodCategory,
+      minPrice,
+      maxPrice,
+      rating,
+      limit = 6,
+    } = req.query;
+    console.log("Get Restaurants Params:", req.query);
+
+    let businessFilter = {
+      isActive: true,
+      requestStatus: "approved",
+      isPopular: section === "popular" ? true : false,
+    };
+
+    if (type) {
+      businessFilter.categoryType = new RegExp(type, "i");
+    }
+
+    if (rating) {
+      businessFilter.averageRating = { $gte: Number(rating) };
+    }
+
+    if (section === "nearby" && lat && lng) {
+      businessFilter.location = {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [Number(lng), Number(lat)],
+          },
+          $maxDistance: Number(radius) * 1000,
+        },
+      };
+    }
+
+    let keywords = [];
+    if (q) {
+      keywords = q.trim().split(/\s+/);
+    }
+
+    let businessIds = new Set();
+
+    if (keywords.length) {
+      const businessResults = await BusinessModel.find({
+        ...businessFilter,
+        $and: keywords.map((word) => ({
+          $or: [
+            { name: new RegExp(word, "i") },
+            { description: new RegExp(word, "i") },
+            { "address.street": new RegExp(word, "i") },
+            { "address.area": new RegExp(word, "i") },
+            { "address.city": new RegExp(word, "i") },
+          ],
+        })),
+      }).select("_id");
+
+      businessResults.forEach((b) =>
+        businessIds.add(b._id.toString())
+      );
+    }
+
+    let itemFilter = { isAvailable: true };
+
+    if (foodCategory) {
+      itemFilter.category = new RegExp(foodCategory, "i");
+    }
+
+    if ((minPrice || maxPrice) && (q || foodCategory)) {
+      itemFilter["variants.price"] = {
+        ...(minPrice && { $gte: Number(minPrice) }),
+        ...(maxPrice && { $lte: Number(maxPrice) }),
+      };
+    }
+
+    if (keywords.length) {
+      const itemResults = await Item.find({
+        ...itemFilter,
+        $and: keywords.map((word) => ({
+          $or: [
+            { name: new RegExp(word, "i") },
+            { category: new RegExp(word, "i") },
+            { subcategory: new RegExp(word, "i") },
+          ],
+        })),
+      }).select("businessId");
+
+      itemResults.forEach((i) =>
+        businessIds.add(i.businessId.toString())
+      );
+    }
+
+    /* ---------------- FINAL QUERY ---------------- */
+    let finalFilter = { ...businessFilter };
+
+    if (businessIds.size > 0) {
+      finalFilter._id = { $in: [...businessIds] };
+    }
+
+    /* ---------------- SORTING ---------------- */
+    let sort = {};
+    if (section === "popular") sort = { averageRating: -1 };
+    else sort = { createdAt: -1 };
+
+    const businesses = await BusinessModel.find(finalFilter)
+      .sort(sort)
+      .limit(Number(limit))
+      .populate("categories")
+      .populate("menuItems")
+      .lean();
+
+    return res.json({
+      success: true,
+      count: businesses.length,
+      data: businesses,
+    });
+  } catch (error) {
+    console.error("Restaurant API Error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+
+
+
+exports.GlobalSearchSuggestions = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const regex = new RegExp(q, "i");
+
+    const [businesses, items] = await Promise.all([
+      BusinessModel.find(
+        {
+          isActive: true,
+          requestStatus: "approved",
+          $or: [
+            { name: regex },
+            { description: regex },
+            { categoryType: regex },
+            { "address.street": regex },
+            { "address.city": regex },
+          ],
+        },
+        { name: 1 }
+      ).limit(7),
+
+      Item.find(
+        {
+          isAvailable: true,
+          name: regex,
+          $or: [
+            { name: regex },
+            { description: regex },
+            { category: regex },
+            { subcategory: regex },
+            { "variants.name": regex },
+          ],
+        },
+        { name: 1 }
+      ).limit(7),
+    ]);
+
+    const suggestionsMap = new Map();
+
+    businesses.forEach((b) => {
+      suggestionsMap.set(b?.name?.toLowerCase(), {
+        type: "restaurant",
+        label: b.name,
+      });
+    });
+
+    items.forEach((i) => {
+      if (!suggestionsMap.has(i?.name?.toLowerCase())) {
+        suggestionsMap.set(i?.name?.toLowerCase(), {
+          type: "item",
+          label: i.name,
+        });
+      }
+    });
+
+    const suggestions = Array.from(suggestionsMap.values());
+
+
+    return res.json({
+      success: true,
+      data: suggestions.slice(0, 8),
+    });
+  } catch (err) {
+    console.error("Suggestion Error", err);
+    res.status(500).json({ success: false });
   }
 };
