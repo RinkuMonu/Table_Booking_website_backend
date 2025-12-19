@@ -54,7 +54,6 @@ const businessSchema = new mongoose.Schema(
       default: "Veg",
     },
 
-
     // 🌍 Location for Nearby Filter
     location: {
       type: {
