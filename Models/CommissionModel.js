@@ -30,6 +30,11 @@ const commissionSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+    },
     vendorId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
