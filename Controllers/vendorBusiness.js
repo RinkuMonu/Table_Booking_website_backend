@@ -4,7 +4,7 @@ const Table = require("../Models/TableModel");
 const Schedule = require("../Models/ScheduleModel");
 const Business = require("../Models/BusinessModel");
 const User = require('../Models/UserModel');
-
+const Branch = require("../Models/BranchModel");
 const models = { Category, Item: Item.Item, Table, Schedule };
 
 const businessFieldMap = {
@@ -21,8 +21,7 @@ const getModel = (modelName) => {
 };
 
 // ✅ CREATE
-const createBusinessData = async (req, res) => {
-  
+const createBusinessData = async (req, res) => {  
   try {
     const { model } = req.body;
     const SelectedModel = getModel(model);
@@ -46,8 +45,8 @@ const createBusinessData = async (req, res) => {
     await newItem.save();
 
     // ✅ auto-link with Business
-    if (payload.businessId && businessFieldMap[model]) {
-      await Business.findByIdAndUpdate(payload.businessId, {
+    if (payload.branchId && businessFieldMap[model]) {
+      await Branch.findByIdAndUpdate(payload.branchId, {
         $push: { [businessFieldMap[model]]: newItem._id },
       });
     }

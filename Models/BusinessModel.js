@@ -27,6 +27,7 @@ const businessSchema = new mongoose.Schema(
     address: addressSchema,
 
     isActive: { type: Boolean, default: true },
+    isPopular: { type: Boolean, default: true },
 
     branches: [{ type: mongoose.Schema.Types.ObjectId, ref: "Branch" }],
     menuItems: [{ type: mongoose.Schema.Types.ObjectId, ref: "Item" }],
@@ -44,8 +45,13 @@ const businessSchema = new mongoose.Schema(
     totalRatings: { type: Number, default: 0 },
     categoryType: {
       type: String,
-      enum: ["veg", "nonveg", "drinks", "both"],
-      default: "both",
+      enum: ["Pub", "Cafe", "Club","Restro","Bar","Both"],
+      default: "Both",
+    },
+    foodType: {
+      type: String,
+      enum: ["Veg", "Nonveg", "Both"],
+      default: "Veg",
     },
 
     // 🌍 Location for Nearby Filter
@@ -60,7 +66,7 @@ const businessSchema = new mongoose.Schema(
         default: [0, 0],
       },
     },
-       // ⭐ NEW FIELD
+    // ⭐ NEW FIELD
     requestStatus: {
       type: String,
       enum: ["pending", "approved", "denied"],
