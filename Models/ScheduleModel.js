@@ -55,11 +55,11 @@ const scheduleSchema = new mongoose.Schema(
       ref: "Business",
       required: true,
     },
- branchId: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Branch"
-}
-,
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: true,
+    },
     tableId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Table",

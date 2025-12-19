@@ -3,14 +3,11 @@ const mongoose = require("mongoose");
 
 const tableSchema = new mongoose.Schema(
   {
-    businessId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Business",
-      required: true,
-    },
+    
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: false,
+      ref: "Branch",
+      required: true,
     },
     category: {
       type: String,

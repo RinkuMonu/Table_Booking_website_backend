@@ -11,43 +11,31 @@ const complimentarySchema = new mongoose.Schema({
   isMandatory: { type: Boolean, default: false },
 });
 
-const itemSchema = new mongoose.Schema(
-  {   
-    businessId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Business",
-      required: true,
-    },
-    branchId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-    },
-
-    // 🔹 food or drink
-    type: {
-      type: String,
-      enum: ["food", "drink"],
-      required: true,
+const itemSchema = new mongoose.Schema({
+    categoryId: { 
+        type: mongoose.Schema.Types.ObjectId, 
+        ref: "Category", 
+        required: true 
+    },    
+    name: { type: String, required: true, trim: true },
+    description: String,    
+    // ✅ Veg/Non-Veg/Egg पहचान के लिए
+    dietaryType: { 
+        type: String, 
+        enum: ["Veg", "Non-Veg", "Egg", "N/A"], 
+        default: "Veg" 
     },
 
-    // 🔹 classification
-    category: { type: String, required: true }, // e.g. Veg, Whiskey
-    subcategory: { type: String }, // e.g. Rotti, Peg, Bottle
-
-    // 🔹 core info
-    name: { type: String, required: true }, // e.g. Paneer Butter Masala, Royal Stag
-    description: { type: String },
-    image: { type: String },
-    images: [{ type: String }],
-
-    // 🔹 details
+    image: String,
+    images: [String],
+    
     variants: [variantSchema],
-    complimentary: [complimentarySchema], // only used when type = drink
-
+    complimentary: [complimentarySchema], 
+    
+    order: { type: Number, default: 0 }, // ✅ मेनू में ऊपर-नीचे करने के लिए
     isAvailable: { type: Boolean, default: true },
-  },
-  { timestamps: true }
-);
+    isRecommended: { type: Boolean, default: false } // ✅ 'Today's Special' के लिए
+}, { timestamps: true });
 itemSchema.virtual("fullImageUrl").get(function () {
   if (!this.image) {
     return null;

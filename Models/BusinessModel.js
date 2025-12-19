@@ -45,7 +45,7 @@ const businessSchema = new mongoose.Schema(
     totalRatings: { type: Number, default: 0 },
     categoryType: {
       type: String,
-      enum: ["Pub", "Cafe", "Club","Restro","Bar"],
+      enum: ["Pub", "Cafe", "Club","Restro","Bar","Both"],
       default: "Both",
     },
     foodType: {
