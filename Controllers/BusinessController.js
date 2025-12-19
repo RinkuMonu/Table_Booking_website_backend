@@ -733,6 +733,7 @@ exports.globalSearch = async (req, res) => {
         $or: [
           { name: new RegExp(word, "i") },
           { description: new RegExp(word, "i") },
+          { categoryType: new RegExp(word, "i") },
           { "address.street": new RegExp(word, "i") },
           { "address.area": new RegExp(word, "i") },
           { "address.city": new RegExp(word, "i") },
@@ -968,12 +969,13 @@ exports.GlobalSearchSuggestions = async (req, res) => {
             { name: regex },
             { description: regex },
             { categoryType: regex },
+            { foodType: regex },
             { "address.street": regex },
             { "address.city": regex },
           ],
         },
         { name: 1 }
-      ).limit(7),
+      ).limit(10),
 
       Item.find(
         {
