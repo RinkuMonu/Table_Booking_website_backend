@@ -12,6 +12,11 @@ const reviewSchema = new mongoose.Schema(
       ref: "Business",
       required: true,
     },
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
+      required: false,
+    },
     foodItemId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "FoodItem",

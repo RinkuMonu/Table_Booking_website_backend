@@ -92,8 +92,6 @@ const slotRoutes = require("./Routes/slotRoutes");
 const homeRoutes = require("./Routes/homeGlobalRoute");
 const app = express();
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-
-
 // Connect MongoDB
 connectDB();
 // Middleware
@@ -110,7 +108,6 @@ app.use("/api/details", detailRoutes);
 app.use("/api/home",homeRoutes);
 app.use("/api/bookings", bookingRoutes);
 // app.use("/api/orders", orderRoutes);
-
 app.use("/api/blogs", blogRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/contact", contactRoutes);
@@ -121,7 +118,6 @@ app.use("/api/slots", slotRoutes);
 app.get("/", (req, res) => {
   res.send("🍽 Hotel Table Booking Backend is Running...");
 });
-
 // Error Middleware (should be last)
 const { notFound, errorHandler } = require("./middleware/ErrorMiddleware");
 app.use(notFound);

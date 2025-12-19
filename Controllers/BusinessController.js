@@ -8,6 +8,8 @@ const Schedule = require("../Models/ScheduleModel");
 const mongoose = require("mongoose");
 const BusinessModel = require("../Models/BusinessModel");
 const CategoryModel = require("../Models/CategoryModel");
+const TableModel = require("../Models/TableModel");
+const ReviewModel = require("../Models/ReviewModel");
 
 
 const copyMenuTablesSchedules = async (vendorId, businessId, sourceBranchId, targetBranchId) => {
@@ -256,7 +258,6 @@ exports.addBranch = async (req, res) => {
         await copyMenuTablesSchedules(vendorId, business._id, sameAsBranchId, branch._id);
       }
     }
-
     return res.status(201).json({ success: true, message: "Branch added", data: branch });
   } catch (error) {
     console.error("addBranch error:", error);
@@ -378,36 +379,74 @@ exports.updateBusiness = async (req, res) => {
 exports.getBusinessById = async (req, res) => {
   try {
     const { businessId } = req.params;
-    if (!businessId)
-      return res.status(400).json({ message: "businessId param required" });
 
-    const business = await Business.findById(businessId)
-      .populate("categories")
-      .populate("menuItems")
-      .populate("tables")
-      .populate("schedules")
-      .populate({
-        path: "branches",
-        populate: { path: "walletId", model: "Wallet" },
-      })
-      .populate({
-        path: "reviews", // 👈 Add this
-        populate: {
-          path: "userId", // 👈 Assuming each review has userId
-          select: "name email profileImage", // optional — only select needed fields
-        },
+    // --- NEW CHECK START ---
+    // 1. Pehle check karein ki Business exist karta hai aur Active hai
+    const business = await Business.findOne({ _id: businessId, isActive: true });
+
+    if (!business) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Business not found or is currently inactive" 
       });
+    }
+    // --- NEW CHECK END ---
 
-    if (!business)
-      return res.status(404).json({ message: "Business not found" });
+    // 2. Ab us business ke active branches find karein
+    const branches = await Branch.find({ businessId, isActive: true })
+      .lean();
 
-    return res.status(200).json({ success: true, data: business });
+    if (!branches.length) {
+      return res.status(404).json({ success: false, message: "No active branches found for this business" });
+    }
+
+    // 3. Har branch ke liye uska specific data parallel fetch karein
+    const fullBranchData = await Promise.all(
+      branches.map(async (branch) => {
+        const branchId = branch._id;
+
+        const [categories, tables, reviews] = await Promise.all([
+          CategoryModel.find({ branchId, isActive: true })
+            .populate({ path: 'categoryItems', match: { isAvailable: true } })
+            .lean({ virtuals: true }),
+          TableModel.find({ branchId }).lean(),
+          ReviewModel.find({ branchId }).populate("userId", "name").lean()
+        ]);
+
+        return {
+          branchInfo: {
+            id: branch._id,
+            name: branch.name,
+            address: branch.address,
+            images: branch.fullImageUrls
+          },
+          menu: categories.map(cat => ({
+            categoryId: cat._id,
+            categoryName: cat.name,
+            items: cat.categoryItems || []
+          })),
+          tables: tables,
+          reviews: reviews
+        };
+      })
+    );
+
+    // 4. Final Response
+    return res.status(200).json({
+      success: true,
+      data: {
+        businessName: business.name, // Ab hum direct business object se naam le sakte hain
+        businessId: businessId,
+        businessImages: business.fullImageUrls,
+        branches: fullBranchData
+      }
+    });
+
   } catch (error) {
-    console.error("getBusinessById error:", error);
+    console.error(error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 exports.getBusinesses = async (req, res) => {
   try {
@@ -733,6 +772,7 @@ exports.globalSearch = async (req, res) => {
         $or: [
           { name: new RegExp(word, "i") },
           { description: new RegExp(word, "i") },
+          { categoryType: new RegExp(word, "i") },
           { "address.street": new RegExp(word, "i") },
           { "address.area": new RegExp(word, "i") },
           { "address.city": new RegExp(word, "i") },
@@ -968,12 +1008,13 @@ exports.GlobalSearchSuggestions = async (req, res) => {
             { name: regex },
             { description: regex },
             { categoryType: regex },
+            { foodType: regex },
             { "address.street": regex },
             { "address.city": regex },
           ],
         },
         { name: 1 }
-      ).limit(7),
+      ).limit(10),
 
       Item.find(
         {
