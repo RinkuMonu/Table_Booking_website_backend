@@ -22,6 +22,27 @@ const branchSchema = new mongoose.Schema(
     description: String,
     images: [String],
     address: addressSchema,
+    menuItems: [{ type: mongoose.Schema.Types.ObjectId, ref: "Item" }],
+    categories: [{ type: mongoose.Schema.Types.ObjectId, ref: "Category" }],
+    tables: [{ type: mongoose.Schema.Types.ObjectId, ref: "Table" }],
+    schedules: [{ type: mongoose.Schema.Types.ObjectId, ref: "Schedule" }],
+    commissionId: { type: mongoose.Schema.Types.ObjectId, ref: "Commission" },
+    wallets: [{ type: mongoose.Schema.Types.ObjectId, ref: "Wallet" }],
+    reviews: [{ type: mongoose.Schema.Types.ObjectId, ref: "Review" }],
+    defaultCommissionPercentage: { type: Number, default: 50 },
+    // ⭐ New Additions for Filter API
+    averageRating: { type: Number, default: 0 },
+    totalRatings: { type: Number, default: 0 },
+    categoryType: {
+      type: String,
+      enum: ["Pub", "Cafe", "Club","Restro","Bar"],
+      default: "Restro",
+    },
+    foodType: {
+      type: String,
+      enum: ["Veg", "Nonveg", "Both"],
+      default: "Veg",
+    },
     isActive: { type: Boolean, default: true }, // open to take bookings
     isPopular: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // vendor who created
