@@ -39,11 +39,12 @@ router.put("/delete", protect, softDelete);
 router.get("/all", protect, authorizeRoles("admin", "vendor"), getAllUsers);
 
 // Get by ID
-router.get("/", protect, authorizeRoles("admin", "vendor","user"), getUserById);
+router.get("/:id", protect, authorizeRoles("admin", "vendor","user"), getUserById);
 router.post('/profile',protect,
     upload.single('profilePicture'),
     updateUserProfile
 );
+
 
 // Referral
 router.post("/apply-referral", protect, applyReferralCode);

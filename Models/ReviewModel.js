@@ -31,7 +31,19 @@ const reviewSchema = new mongoose.Schema(
     review: {
       type: String,
       required: true,
-    }
+    },
+    likes: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        likedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );
