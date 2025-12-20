@@ -385,9 +385,9 @@ exports.getBusinessById = async (req, res) => {
     const business = await Business.findOne({ _id: businessId, isActive: true });
 
     if (!business) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Business not found or is currently inactive" 
+      return res.status(404).json({
+        success: false,
+        message: "Business not found or is currently inactive"
       });
     }
     // --- NEW CHECK END ---
@@ -681,178 +681,269 @@ exports.updateBusinessStatus = async (req, res) => {
 
 
 
-exports.globalSearch = async (req, res) => {
-  try {
-    const {
-      q,
-      lat,
-      lng,
-      radius = 5000, // default 5 km
-      type,
-      foodCategory,
-      minPrice,
-      maxPrice,
-      rating,
-    } = req.query;
-    console.log("Global Search Params:", req.query);
-    // ----------------------------------
-    // 🔹 BASE BUSINESS FILTER
-    // ----------------------------------
-    let businessFilter = {
-      isActive: true,
-      requestStatus: "approved",
-    };
-    if (q == "popular") {
-      businessFilter.isPopular = true
-    }
+// exports.globalSearch = async (req, res) => {
+//   try {
+//     const {
+//       q,
+//       lat,
+//       lng,
+//       radius = 500,
+//       type,
+//       foodCategory,
+//       minPrice,
+//       maxPrice,
+//       rating,
+//     } = req.query;
+//     console.log("Global Search Params:", req.query);
+//     // ----------------------------------
+//     // 🔹 BASE BUSINESS FILTER
+//     // ----------------------------------
+//     let businessFilter = {
+//       isActive: true,
+//       requestStatus: "approved",
+//     };
+//     if (q == "popular") {
+//       businessFilter.isPopular = true
+//     }
 
-    // ----------------------------------
-    // 🔹 TYPE FILTER (veg / bar / drinks)
-    // ----------------------------------
-    if (type) {
-      businessFilter.categoryType = new RegExp(type, "i");
-    }
-    if (foodCategory) {
-      businessFilter.foodType = new RegExp(foodCategory, "i");
-    }
-
-
-    // ----------------------------------
-    // 🔹 RATING FILTER
-    // ----------------------------------
-    if (rating) {
-      businessFilter.averageRating = { $gte: Number(rating) };
-    }
-
-    // ----------------------------------
-    // 🔹 NEARBY FILTER
-    // ----------------------------------
-    if (lat && lng) {
-      businessFilter.location = {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [Number(lng), Number(lat)],
-          },
-          $maxDistance: Number(radius) * 1000, // km → meter
-        },
-      };
-    }
-
-    // ----------------------------------
-    // 🔹 NO QUERY CASE
-    // ----------------------------------
-    if (!q || q.trim() === "") {
-      const businesses = await BusinessModel.find(businessFilter)
-        .populate("categories")
-        .populate("menuItems")
-        .lean();
-
-      return res.status(200).json({
-        success: true,
-        count: businesses.length,
-        data: businesses,
-      });
-    }
-
-    // ----------------------------------
-    // 🔹 KEYWORDS
-    // ----------------------------------
-    let keywords = [];
-    if (q && !["popular", "nearby"].includes(q.toLowerCase())) {
-      keywords = q.trim().toLowerCase().split(/\s+/);
-    }
-
-    // ----------------------------------
-    // 🔹 BUSINESS SEARCH
-    // ----------------------------------
-    const businessResults = await BusinessModel.find({
-      ...businessFilter,
-      $and: keywords.map((word) => ({
-        $or: [
-          { name: new RegExp(word, "i") },
-          { description: new RegExp(word, "i") },
-          { categoryType: new RegExp(word, "i") },
-          { "address.street": new RegExp(word, "i") },
-          { "address.area": new RegExp(word, "i") },
-          { "address.city": new RegExp(word, "i") },
-        ],
-      })),
-    }).select("_id");
-
-    // ----------------------------------
-    // 🔹 CATEGORY SEARCH
-    // ----------------------------------
-    const categoryResults = await CategoryModel.find({
-      isActive: true,
-      ...(foodCategory && { name: new RegExp(foodCategory, "i") }),
-    }).select("businessId");
-
-    // ----------------------------------
-    // 🔹 ITEM SEARCH (Food + Price)
-    // ----------------------------------
-    let itemFilter = {
-      isAvailable: true,
-    };
-
-    if (foodCategory) {
-      itemFilter.category = new RegExp(foodCategory, "i");
-    }
-
-    if ((minPrice || maxPrice) && (foodCategory || q)) {
-      itemFilter["variants.price"] = {
-        ...(minPrice && { $gte: Number(minPrice) }),
-        ...(maxPrice && { $lte: Number(maxPrice) }),
-      };
-    }
+//     // ----------------------------------
+//     // 🔹 TYPE FILTER (veg / bar / drinks)
+//     // ----------------------------------
+//     if (type) {
+//       businessFilter.categoryType = new RegExp(type, "i");
+//     }
+//     if (foodCategory) {
+//       businessFilter.foodType = new RegExp(foodCategory, "i");
+//     }
 
 
-    const itemResults = await Item.find({
-      ...itemFilter,
-      $and: keywords.map((word) => ({
-        $or: [
-          { name: new RegExp(word, "i") },
-          { category: new RegExp(word, "i") },
-          { subcategory: new RegExp(word, "i") },
-          { description: new RegExp(word, "i") },
-        ],
-      })),
-    }).select("businessId");
+//     // ----------------------------------
+//     // 🔹 RATING FILTER
+//     // ----------------------------------
+//     if (rating) {
+//       businessFilter.averageRating = { $gte: Number(rating) };
+//     }
 
-    // ----------------------------------
-    // 🔹 UNIQUE BUSINESS IDS
-    // ----------------------------------
-    const businessIds = new Set();
+//     // ----------------------------------
+//     // 🔹 NEARBY FILTER
+//     // ----------------------------------
+//     if (lat && lng) {
+//       businessFilter.location = {
+//         $near: {
+//           $geometry: {
+//             type: "Point",
+//             coordinates: [Number(lng), Number(lat)],
+//           },
+//           $maxDistance: Number(radius) * 1000, // km → meter
+//         },
+//       };
+//     }
 
-    businessResults.forEach((b) => businessIds.add(b._id.toString()));
-    categoryResults.forEach((c) => c.businessId && businessIds.add(c.businessId.toString()));
-    itemResults.forEach((i) => i.businessId && businessIds.add(i.businessId.toString()));
+//     // ----------------------------------
+//     // 🔹 NO QUERY CASE
+//     // ----------------------------------
+//     if (!q || q.trim() === "") {
+//       const businesses = await BusinessModel.find(businessFilter)
+//         .populate("categories")
+//         .populate("menuItems")
+//         .lean();
+//       return res.status(200).json({
+//         success: true,
+//         count: businesses.length,
+//         data: businesses,
+//       });
+//     }
 
-    // ----------------------------------
-    // 🔹 FINAL FETCH
-    // ----------------------------------
-    const businesses = await BusinessModel.find({
-      _id: { $in: [...businessIds] },
-      ...businessFilter,
-    })
-      .populate("categories")
-      .populate("menuItems")
-      .lean();
+//     // ----------------------------------
+//     // 🔹 KEYWORDS
+//     // ----------------------------------
+//     let keywords = [];
+//     if (q && !["popular", "nearby"].includes(q.toLowerCase())) {
+//       keywords = q.trim().toLowerCase().split(/\s+/);
+//     }
 
-    return res.status(200).json({
-      success: true,
-      query: q,
-      count: businesses.length,
-      data: businesses,
-    });
-  } catch (error) {
-    console.error("Global Search Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+//     // ----------------------------------
+//     // 🔹 BUSINESS SEARCH
+//     // ----------------------------------
+//     const businessResults = await BusinessModel.find({
+//       ...businessFilter,
+//       $and: keywords.map((word) => ({
+//         $or: [
+//           { name: new RegExp(word, "i") },
+//           { description: new RegExp(word, "i") },
+//           { categoryType: new RegExp(word, "i") },
+//           { "address.street": new RegExp(word, "i") },
+//           { "address.area": new RegExp(word, "i") },
+//           { "address.city": new RegExp(word, "i") },
+//         ],
+//       })),
+//     }).select("_id");
+
+//     // ----------------------------------
+//     // 🔹 CATEGORY SEARCH
+//     // ----------------------------------
+//     const categoryResults = await CategoryModel.find({
+//       isActive: true,
+//       ...(foodCategory && { name: new RegExp(foodCategory, "i") }),
+//     }).select("businessId");
+
+//     // ----------------------------------
+//     // 🔹 ITEM SEARCH (Food + Price)
+//     // ----------------------------------
+//     let itemFilter = {
+//       isAvailable: true,
+//     };
+
+//     if (foodCategory) {
+//       itemFilter.category = new RegExp(foodCategory, "i");
+//     }
+
+//     if ((minPrice || maxPrice) && (foodCategory || q)) {
+//       itemFilter["variants.price"] = {
+//         ...(minPrice && { $gte: Number(minPrice) }),
+//         ...(maxPrice && { $lte: Number(maxPrice) }),
+//       };
+//     }
+
+
+//     const itemResults = await Item.find({
+//       ...itemFilter,
+//       $and: keywords.map((word) => ({
+//         $or: [
+//           { name: new RegExp(word, "i") },
+//           { category: new RegExp(word, "i") },
+//           { subcategory: new RegExp(word, "i") },
+//           { description: new RegExp(word, "i") },
+//         ],
+//       })),
+//     }).select("businessId");
+
+//     // ----------------------------------
+//     // 🔹 UNIQUE BUSINESS IDS
+//     // ----------------------------------
+//     const businessIds = new Set();
+
+//     businessResults.forEach((b) => businessIds.add(b._id.toString()));
+//     categoryResults.forEach((c) => c.businessId && businessIds.add(c.businessId.toString()));
+//     itemResults.forEach((i) => i.businessId && businessIds.add(i.businessId.toString()));
+
+//     // ----------------------------------
+//     // 🔹 FINAL FETCH
+//     // ----------------------------------
+//     const businesses = await BusinessModel.find({
+//       _id: { $in: [...businessIds] },
+//       ...businessFilter,
+//     })
+//       .populate("categories")
+//       .populate("menuItems")
+//       .lean();
+
+//     return res.status(200).json({
+//       success: true,
+//       query: q,
+//       count: businesses.length,
+//       data: businesses,
+//     });
+//   } catch (error) {
+//     console.error("Global Search Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: error.message,
+//     });
+//   }
+// };
+// exports.GlobalSearchSuggestions = async (req, res) => {
+//   try {
+//     const { q } = req.query;
+//     if (!q || q.length < 2) {
+//       return res.json({ success: true, data: [] });
+//     }
+
+//     const regex = new RegExp(q, "i");
+
+//     const [businesses, items, categories] = await Promise.all([
+//       BusinessModel.find(
+//         {
+//           isActive: true,
+//           requestStatus: "approved",
+//           $or: [
+//             { name: regex },
+//             { description: regex },
+//             { categoryType: regex },
+//             { foodType: regex },
+//             { "address.street": regex },
+//             { "address.city": regex },
+//           ],
+//         },
+//         { name: 1 }
+//       ).limit(10),
+
+//       Item.find(
+//         {
+//           isAvailable: true,
+//           name: regex,
+//           $or: [
+//             { name: regex },
+//             { description: regex },
+//             { category: regex },
+//             { subcategory: regex },
+//             { "variants.name": regex },
+//           ],
+//         },
+//         { name: 1 }
+//       ).limit(7),
+//       CategoryModel.find(
+//         {
+//           isActive: true,
+//           name: regex,
+//           $or: [
+//             { name: regex },
+//             { description: regex },
+//             { type: regex },
+//           ],
+//         },
+//         { name: 1 }
+//       ).limit(7),
+//     ]);
+
+//     const suggestionsMap = new Map();
+
+//     businesses.forEach((b) => {
+//       suggestionsMap.set(b?.name?.toLowerCase(), {
+//         type: "restaurant",
+//         label: b.name,
+//       });
+//     });
+
+//     items.forEach((i) => {
+//       if (!suggestionsMap.has(i?.name?.toLowerCase())) {
+//         suggestionsMap.set(i?.name?.toLowerCase(), {
+//           type: "item",
+//           label: i.name,
+//         });
+//       }
+//     });
+//     categories.forEach((c) => {
+//       if (c?.name && !suggestionsMap.has(c.name.toLowerCase())) {
+//         suggestionsMap.set(c.name.toLowerCase(), {
+//           type: "category",
+//           label: c.name,
+//         });
+//       }
+//     });
+
+//     const suggestions = Array.from(suggestionsMap.values());
+
+
+//     return res.json({
+//       success: true,
+//       data: suggestions.slice(0, 8),
+//     });
+//   } catch (err) {
+//     console.error("Suggestion Error", err);
+//     res.status(500).json({ success: false });
+//   }
+// };
 
 // get resto for home section
 exports.getRestaurants = async (req, res) => {
@@ -863,7 +954,7 @@ exports.getRestaurants = async (req, res) => {
       type,           // restro | bar | club | cafe
       lat,
       lng,
-      radius = 5,
+      radius = 5000,
       foodCategory,
       minPrice,
       maxPrice,
@@ -875,8 +966,11 @@ exports.getRestaurants = async (req, res) => {
     let businessFilter = {
       isActive: true,
       requestStatus: "approved",
-      isPopular: section === "popular" ? true : false,
+      // isPopular: section == "popular" ? true : section == "nearby" ? null : false,
     };
+    if (section == "popular") {
+      businessFilter.isPopular = true;
+    }
 
     if (type) {
       businessFilter.categoryType = new RegExp(type, "i");
@@ -893,11 +987,11 @@ exports.getRestaurants = async (req, res) => {
             type: "Point",
             coordinates: [Number(lng), Number(lat)],
           },
-          $maxDistance: Number(radius) * 1000,
+          $maxDistance: Number(radius),
         },
       };
     }
-
+    console.log("businessFilter", businessFilter)
     let keywords = [];
     if (q) {
       keywords = q.trim().split(/\s+/);
@@ -987,19 +1081,189 @@ exports.getRestaurants = async (req, res) => {
   }
 };
 
+exports.globalSearch = async (req, res) => {
+  try {
+    const {
+      q,
+      lat,
+      lng,
+      radius = 5, // km
+      type,
+      foodCategory,
+      minPrice,
+      maxPrice,
+      rating,
+    } = req.query;
 
+    console.log("Global Search Params:", req.query);
+
+    // -------------------------------
+    // BASE BUSINESS FILTER
+    // -------------------------------
+    let businessFilter = {
+      isActive: true,
+      requestStatus: "approved",
+    };
+
+    if (q === "popular") {
+      businessFilter.isPopular = true;
+    }
+
+    if (type) {
+      businessFilter.categoryType = new RegExp(type, "i");
+    }
+
+    if (foodCategory) {
+      businessFilter.foodType = new RegExp(foodCategory, "i");
+    }
+
+    if (rating) {
+      businessFilter.averageRating = { $gte: Number(rating) };
+    }
+
+    // -------------------------------
+    // NEARBY FILTER
+    // -------------------------------
+    if (lat && lng) {
+      businessFilter.location = {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [Number(lng), Number(lat)],
+          },
+          $maxDistance: Number(radius) * 1000,
+        },
+      };
+    }
+
+    // -------------------------------
+    // NO SEARCH TEXT
+    // -------------------------------
+    if (!q || q.trim() === "") {
+      const businesses = await BusinessModel.find(businessFilter)
+        .populate("categories")
+        .populate("menuItems")
+        .lean();
+
+      return res.json({
+        success: true,
+        count: businesses.length,
+        data: businesses,
+      });
+    }
+
+    // -------------------------------
+    // GLOBAL REGEX (KEY POINT)
+    // -------------------------------
+    const regex = new RegExp(q, "i");
+
+    // -------------------------------
+    // SEARCH IN ALL MODELS (PARALLEL)
+    // -------------------------------
+    const [businessResults, categoryResults, itemResults] =
+      await Promise.all([
+        // 🔹 BUSINESS SEARCH
+        BusinessModel.find({
+          ...businessFilter,
+          $or: [
+            { name: regex },
+            { description: regex },
+            { categoryType: regex },
+            { foodType: regex },
+            { "address.street": regex },
+            { "address.area": regex },
+            { "address.city": regex },
+          ],
+        }).select("_id"),
+
+        // 🔹 CATEGORY SEARCH → businessId
+        CategoryModel.find({
+          isActive: true,
+          $or: [
+            { name: regex },
+            { description: regex },
+            { type: regex },
+          ],
+        }).select("businessId"),
+
+        // 🔹 ITEM SEARCH → businessId
+        Item.find({
+          isAvailable: true,
+          $or: [
+            { name: regex },
+            { description: regex },
+            { category: regex },
+            { subcategory: regex },
+            { "variants.name": regex },
+          ],
+        }).select("businessId"),
+      ]);
+    // console.log("businessResults, categoryResults", itemResults)
+    console.log("businessResults", businessResults)
+    console.log("categoryResults", categoryResults)
+    console.log("itemResults", itemResults)
+
+    // -------------------------------
+    // UNIQUE BUSINESS IDS
+    // -------------------------------
+    const businessIds = new Set();
+
+    businessResults.forEach((b) =>
+      businessIds.add(b._id.toString())
+    );
+
+    categoryResults.forEach((c) => {
+      console.log("first", c._doc._id);
+      console.log("second", c._doc.businessId);
+      if (c._doc.businessId) {
+        businessIds.add(c._doc.businessId.toString());
+      }
+    });
+    itemResults.forEach((c) => {
+      if (c._doc.businessId) {
+        businessIds.add(c._doc.businessId.toString());
+      }
+    });
+
+    // console.log("businessIds FINAL 👉", [...businessIds]);
+    // -------------------------------
+    // FINAL FETCH (ONLY BUSINESSES)
+    // -------------------------------
+    const businesses = await BusinessModel.find({
+      _id: { $in: [...businessIds] },
+      ...businessFilter,
+    })
+      .populate("categories")
+      .populate("menuItems")
+      .lean();
+
+    return res.json({
+      success: true,
+      query: q,
+      count: businesses.length,
+      data: businesses,
+    });
+  } catch (error) {
+    console.error("Global Search Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 
 
 exports.GlobalSearchSuggestions = async (req, res) => {
   try {
     const { q } = req.query;
+
     if (!q || q.length < 2) {
       return res.json({ success: true, data: [] });
     }
 
     const regex = new RegExp(q, "i");
 
-    const [businesses, items] = await Promise.all([
+    const [businesses, items, categories] = await Promise.all([
       BusinessModel.find(
         {
           isActive: true,
@@ -1019,7 +1283,6 @@ exports.GlobalSearchSuggestions = async (req, res) => {
       Item.find(
         {
           isAvailable: true,
-          name: regex,
           $or: [
             { name: regex },
             { description: regex },
@@ -1030,32 +1293,52 @@ exports.GlobalSearchSuggestions = async (req, res) => {
         },
         { name: 1 }
       ).limit(7),
+
+      CategoryModel.find(
+        {
+          isActive: true,
+          $or: [
+            { name: regex },
+            { description: regex },
+            { type: regex },
+          ],
+        },
+        { name: 1 }
+      ).limit(7),
     ]);
 
     const suggestionsMap = new Map();
 
     businesses.forEach((b) => {
-      suggestionsMap.set(b?.name?.toLowerCase(), {
-        type: "restaurant",
-        label: b.name,
-      });
+      if (b?.name) {
+        suggestionsMap.set(b.name.toLowerCase(), {
+          type: "restaurant",
+          label: b.name,
+        });
+      }
     });
 
     items.forEach((i) => {
-      if (!suggestionsMap.has(i?.name?.toLowerCase())) {
-        suggestionsMap.set(i?.name?.toLowerCase(), {
+      if (i?.name && !suggestionsMap.has(i.name.toLowerCase())) {
+        suggestionsMap.set(i.name.toLowerCase(), {
           type: "item",
           label: i.name,
         });
       }
     });
 
-    const suggestions = Array.from(suggestionsMap.values());
-
+    categories.forEach((c) => {
+      if (c?.name && !suggestionsMap.has(c.name.toLowerCase())) {
+        suggestionsMap.set(c.name.toLowerCase(), {
+          type: "category",
+          label: c.name,
+        });
+      }
+    });
 
     return res.json({
       success: true,
-      data: suggestions.slice(0, 8),
+      data: Array.from(suggestionsMap.values()).slice(0, 8),
     });
   } catch (err) {
     console.error("Suggestion Error", err);
