@@ -45,6 +45,7 @@ router.post('/profile',protect,
     updateUserProfile
 );
 
+
 // Referral
 router.post("/apply-referral", protect, applyReferralCode);
 
