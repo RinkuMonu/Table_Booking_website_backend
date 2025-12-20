@@ -8,6 +8,8 @@ const {
   deleteBusinessData,
   getAllBusinessData,
   getByIdBusinessData,
+  getMenuByCategory,
+  getItemsByCategory,
 } = require("../Controllers/vendorBusiness");
 
 const router = express.Router();
@@ -83,5 +85,8 @@ router.delete("/delete",
   deleteBusinessData);
 router.post("/get-all", protect, getAllBusinessData);
 router.post("/get-by-id", protect, getByIdBusinessData);
+
+router.post("/items-by-category", protect, getItemsByCategory);
+
 
 module.exports = router;
