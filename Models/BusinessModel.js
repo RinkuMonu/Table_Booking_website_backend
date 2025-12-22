@@ -101,4 +101,5 @@ businessSchema.index({
   "address.city": "text",
 });
 
+
 module.exports = mongoose.model("Business", businessSchema);
