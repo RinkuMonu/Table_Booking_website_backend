@@ -10,6 +10,7 @@ const BusinessModel = require("../Models/BusinessModel");
 const CategoryModel = require("../Models/CategoryModel");
 const TableModel = require("../Models/TableModel");
 const ReviewModel = require("../Models/ReviewModel");
+const ScheduleModel = require("../Models/ScheduleModel");
 
 
 const copyMenuTablesSchedules = async (vendorId, businessId, sourceBranchId, targetBranchId) => {
@@ -380,70 +381,75 @@ exports.getBusinessById = async (req, res) => {
   try {
     const { businessId } = req.params;
 
-    // --- NEW CHECK START ---
-    // 1. Pehle check karein ki Business exist karta hai aur Active hai
+    // 1. Business check (Hamesha pehle ise fetch karein)
     const business = await Business.findOne({ _id: businessId, isActive: true });
-
+    
     if (!business) {
       return res.status(404).json({
         success: false,
         message: "Business not found or is currently inactive"
       });
     }
-    // --- NEW CHECK END ---
 
-    // 2. Ab us business ke active branches find karein
-    const branches = await Branch.find({ businessId, isActive: true })
-      .lean();
+    // 2. Active branches find karein
+    const branches = await Branch.find({ businessId, isActive: true });
 
-    if (!branches.length) {
-      return res.status(404).json({ success: false, message: "No active branches found for this business" });
+    let fullBranchData = [];
+
+    // 3. Agar branches milti hain tabhi detail fetching karein
+    if (branches.length > 0) {
+      fullBranchData = await Promise.all(
+        branches.map(async (branch) => {
+          const branchId = branch._id;
+
+          const [categories, tables, reviews, schedules] = await Promise.all([
+            CategoryModel.find({ branchId, isActive: true })
+              .populate({ path: 'categoryItems', match: { isAvailable: true } })
+              .lean(),
+            TableModel.find({ branchId }).lean(),
+            ReviewModel.find({ branchId }).populate("userId", "name").lean(),
+            ScheduleModel.find({ branchId })
+              .populate("slotSetId")
+              .lean()
+          ]);
+
+          return {
+            branchInfo: {
+              id: branch._id,
+              name: branch.name,
+              address: branch.address,
+              images: branch.fullImageUrls
+            },
+            menu: categories.map(cat => ({
+              categoryId: cat._id,
+              categoryName: cat.name,
+              items: cat.categoryItems || []
+            })),
+            tables: tables,
+            reviews: reviews,
+            schedules: schedules.map(sch => ({
+              date: sch.date,
+              tableId: sch.tableId,
+              slotDetails: sch.slotSetId
+            }))
+          };
+        })
+      );
     }
 
-    // 3. Har branch ke liye uska specific data parallel fetch karein
-    const fullBranchData = await Promise.all(
-      branches.map(async (branch) => {
-        const branchId = branch._id;
-
-        const [categories, tables, reviews] = await Promise.all([
-          CategoryModel.find({ branchId, isActive: true })
-            .populate({ path: 'categoryItems', match: { isAvailable: true } })
-            .lean({ virtuals: true }),
-          TableModel.find({ branchId }).lean(),
-          ReviewModel.find({ branchId }).populate("userId", "name").lean()
-        ]);
-
-        return {
-          branchInfo: {
-            id: branch._id,
-            name: branch.name,
-            address: branch.address,
-            images: branch.fullImageUrls
-          },
-          menu: categories.map(cat => ({
-            categoryId: cat._id,
-            categoryName: cat.name,
-            items: cat.categoryItems || []
-          })),
-          tables: tables,
-          reviews: reviews
-        };
-      })
-    );
-
-    // 4. Final Response
+    // 4. Final Response (Ab branch khali hone par bhi Business data dikhega)
     return res.status(200).json({
       success: true,
       data: {
-        businessName: business.name, // Ab hum direct business object se naam le sakte hain
+        businessName: business.name,
         businessId: businessId,
         businessImages: business.fullImageUrls,
-        branches: fullBranchData
+        branches: fullBranchData // Agar branch nahi hogi toh ye [] empty array bhejega
       }
     });
 
   } catch (error) {
-    console.error(error);
+    console.error("GET BUSINESS BY ID ERROR:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };

@@ -10,7 +10,7 @@ const Item = ItemModel.Item;
 const { transferCommission } = require('./WalletController');
 const { deductFromWallet, refundToWallet } = require('../Utils/walletFunctions');
 const { sendBookingConfirmation } = require('./services/NotificationService');
-
+const {sendBookingDataConfirmation} = require("../Utils/sendEmail");
 const MIN_TABLE_PRICE_FOR_CHECK = 2000;
 const CANCELLATION_FEE_PERCENT = 0.15; // 15%
 
@@ -21,268 +21,134 @@ const calculateTotalAmount = (tablePrice, items) => {
 
 exports.createBooking = async (req, res) => {
     const user_id = req.user._id;
-    const { table_id, schedule_id, items_ordered = [], paymentMethod, couponCode } = req.body;
+    const { 
+        businessId, branchId, table_id, slot_id, bookingDay, 
+        timeSlotId, bookingTime, totalGuests, items_ordered = [], 
+        paymentMethod, couponCode 
+    } = req.body;
 
-    let transactionId = null;
-    let appliedCoupon = null;
-    let discount = 0;
+    // Is variable ko bahar define karenge taaki catch block mein use kar sakein
+    let deductionResult = null; 
+    let paymentAmount = 0;
 
     try {
+        // 1. Basic Validations (User, Wallet, Table)
         const user = await User.findById(user_id);
-        if (!user) return res.status(401).send({ message: "Authenticated user not found." });
+        if (!user) return res.status(401).json({ message: "User not found." });
 
         const wallet = await Wallet.findOne({ userId: user_id });
-        if (!wallet) {
-            return res.status(400).send({ message: "User wallet not found. Cannot proceed with booking." });
-        }
-
-        const userWalletBalance = wallet.balance;
-        const userWalletId = wallet._id;
+        if (!wallet) return res.status(400).json({ message: "Wallet not found." });
 
         const table = await Table.findById(table_id);
-        if (!table) return res.status(404).send({ message: "Table not found." });
+        if (!table) return res.status(404).json({ message: "Table not found." });
 
+        // 2. Price Calculation Logic
         const tablePrice = Number(table.price) || 0;
         let validatedTotalAmount = tablePrice;
-
-        // ------------------- ITEM PRICE CALCULATION -------------------
         let finalItemsOrdered = [];
+
         for (const orderItem of items_ordered) {
-            const { itemId, quantity: quantityStr, selected_variant_id } = orderItem;
-            const quantity = Number(quantityStr);
-
-            if (!itemId || isNaN(quantity) || quantity < 1 || !selected_variant_id) {
-                return res.status(400).send({ message: "Invalid quantity or missing item details." });
-            }
-
-            const itemFromDB = await Item.findById(itemId);
-            if (!itemFromDB) {
-                return res.status(404).send({ message: `Item not found for ID: ${itemId}` });
-            }
-
-            const selectedVariant = itemFromDB.variants.find(
-                v => v._id.toString() === selected_variant_id
-            );
-
-            if (
-                !selectedVariant ||
-                !selectedVariant.isAvailable ||
-                typeof selectedVariant.price !== "number" ||
-                isNaN(selectedVariant.price)
-            ) {
-                return res.status(400).send({ message: `Selected variant is unavailable or its price is invalid.` });
-            }
-
-            const itemPrice = selectedVariant.price * quantity;
-            validatedTotalAmount += itemPrice;
-
-            finalItemsOrdered.push({
-                itemId: itemFromDB._id,
-                quantity,
-                selected_variant_id: selectedVariant._id
-            });
-        }
-
-        if (isNaN(validatedTotalAmount)) {
-            return res.status(500).send({ message: "Internal error: Failed to calculate total amount." });
-        }
-
-        // ---------------------------------------------------------------
-        // ⭐⭐⭐ APPLY COUPON LOGIC (FULL VALIDATION) ⭐⭐⭐
-        // ---------------------------------------------------------------
-        const Coupon = require("../Models/CouponModel");
-
-        if (couponCode) {
-            appliedCoupon = await Coupon.findOne({ code: couponCode });
-            if (!appliedCoupon) {
-                return res.status(400).send({ message: "Invalid coupon code" });
-            }
-
-            // ❌ Expired?
-            if (appliedCoupon.expiryDate && new Date() > appliedCoupon.expiryDate) {
-                return res.status(400).send({ message: "This coupon has expired" });
-            }
-
-            // ❌ Inactive?
-            if (!appliedCoupon.isActive) {
-                return res.status(400).send({ message: "This coupon is inactive" });
-            }
-
-            // ❌ Check min order value
-            if (validatedTotalAmount < appliedCoupon.minOrderValue) {
-                return res.status(400).send({
-                    message: `Minimum order value ₹${appliedCoupon.minOrderValue} required for this coupon`
+            const itemFromDB = await Item.findById(orderItem.itemId);
+            if (!itemFromDB) continue;
+            const selectedVariant = itemFromDB.variants.find(v => v._id.toString() === orderItem.selected_variant_id);
+            if (selectedVariant && selectedVariant.isAvailable) {
+                validatedTotalAmount += (selectedVariant.price * orderItem.quantity);
+                finalItemsOrdered.push({
+                    itemId: itemFromDB._id,
+                    quantity: orderItem.quantity,
+                    selected_variant_id: selectedVariant._id
                 });
             }
+        }
 
-            // ❌ Check max usage per day
-            if (appliedCoupon.maxUsePerDay > 0) {
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-
-                const usedToday = appliedCoupon.usageHistory.filter(u =>
-                    new Date(u.usedAt) >= today
-                ).length;
-
-                if (usedToday >= appliedCoupon.maxUsePerDay) {
-                    return res.status(400).send({ message: "Coupon usage limit reached for today" });
-                }
+        // 3. Coupon Logic
+        let discount = 0;
+        let appliedCoupon = null;
+        if (couponCode) {
+            const Coupon = require("../Models/CouponModel");
+            appliedCoupon = await Coupon.findOne({ code: couponCode, isActive: true });
+            if (appliedCoupon && validatedTotalAmount >= appliedCoupon.minOrderValue) {
+                discount = appliedCoupon.discountType === "percent" 
+                    ? (validatedTotalAmount * appliedCoupon.discountValue) / 100 
+                    : appliedCoupon.discountValue;
+                validatedTotalAmount = Math.max(0, validatedTotalAmount - discount);
             }
-
-            // ❌ Already used by this user?
-            const alreadyUsed = appliedCoupon.usageHistory.some(
-                entry => entry.user_id.toString() === user_id.toString()
-            );
-
-            if (alreadyUsed) {
-                return res.status(400).send({ message: "You have already used this coupon" });
-            }
-
-            // Apply Discount
-            if (appliedCoupon.discountType === "percent") {
-                discount = (validatedTotalAmount * appliedCoupon.discountValue) / 100;
-            } else {
-                discount = appliedCoupon.discountValue;
-            }
-
-            validatedTotalAmount -= discount;
-            if (validatedTotalAmount < 0) validatedTotalAmount = 0;
         }
 
-        // ---------------------------------------------------------------
-        let onlinePaymentAmount = 0;
+        // 4. Payment Deduction
+        paymentAmount = paymentMethod === "online" ? validatedTotalAmount : tablePrice;
 
-        if (userWalletBalance < MIN_TABLE_PRICE_FOR_CHECK) {
-            return res.status(400).send({
-                message: `Minimum balance of ${MIN_TABLE_PRICE_FOR_CHECK} is required in your wallet. Please topup.`
-            });
+        if (wallet.balance < paymentAmount) {
+            return res.status(400).json({ message: "Insufficient wallet balance." });
         }
 
-        if (paymentMethod === "online") {
-            onlinePaymentAmount = validatedTotalAmount;
-        } else if (paymentMethod === "cash") {
-            onlinePaymentAmount = tablePrice;
-        } else {
-            return res.status(400).send({ message: "Invalid payment method." });
-        }
+        // Wallet deduction call
+        deductionResult = await deductFromWallet(user_id, wallet._id, paymentAmount, "BOOKING_ADVANCE");
+        if (!deductionResult.success) return res.status(500).json({ message: "Payment failed." });
 
-        if (userWalletBalance < onlinePaymentAmount) {
-            return res.status(400).send({
-                message: `Insufficient balance for online payment of ${onlinePaymentAmount}.`
-            });
-        }
-
-        const deductionResult = await deductFromWallet(
-            user_id,
-            userWalletId,
-            onlinePaymentAmount,
-            appliedCoupon
-                ? `BOOKING_ADVANCE (Discount applied: ${discount})`
-                : "BOOKING_ADVANCE"
-        );
-
-        if (!deductionResult.success) {
-            return res.status(500).send({ message: deductionResult.message || "Payment deduction failed." });
-        }
-
-        transactionId = deductionResult.transactionId;
-
-        // ---------------- CREATE BOOKING ----------------
-        const booking = new Booking({
-            user_id,
-            table_id,
-            schedule_id,
-            items_ordered: finalItemsOrdered,
-            totalAmount: validatedTotalAmount,
-            paymentStatus: onlinePaymentAmount > 0 ? "paid" : "unpaid",
-            status: "pending",
-            requestStatus: "pending",
-
-            couponId: appliedCoupon ? appliedCoupon._id : null,
-            discountApplied: discount
+        // 5. Create & Save Booking
+        const newBooking = new Booking({
+            businessId, branchId, user_id, table_id, slot_id,
+            bookingDay, timeSlotId, bookingTime, totalGuests,
+            items_ordered: finalItemsOrdered, totalAmount: validatedTotalAmount,
+            discountApplied: discount, couponId: appliedCoupon?._id || null,
+            paymentStatus: "paid", status: "pending"
         });
 
-        await booking.save();
+        // Agar yahan error aayega toh seedha 'catch' block mein jayega
+        await newBooking.save();
 
-        // ✅ AFTER BOOKING SUCCESS — HANDLE REFERRAL WALLET CREDIT
-        try {
-            const referral = await Referral.findOne({
-                referredUser: user_id,
-                rewardCredited: false
-            }).populate("referrer");
-
-            if (referral && !user.firstBookingDone) {
-                console.log("Referral reward applicable.");
-
-                // 🔹 Referrer ka wallet fetch karo
-                let referrerWallet = await Wallet.findOne({ userId: referral.referrer._id });
-
-                // Agar wallet nahi ho to create karo
-                if (!referrerWallet) {
-                    referrerWallet = await Wallet.create({
-                        userId: referral.referrer._id,
-                        branchId: table.branchId,   // or any default branch
-                        balance: 0
-                    });
-                }
-
-                // 🔹 Wallet me credit
-                referrerWallet.balance += referral.rewardAmount;
-                await referrerWallet.save();
-
-                // 🔹 Transaction record
-                await Transaction.create({
-                    userId: referral.referrer._id,
-                    walletId: referrerWallet._id,
-                    amount: referral.rewardAmount,
-                    type: "credit",
-                    description: `Referral reward credited for booking ${booking._id}`
-                });
-
-                // 🔹 Update referral record
-                referral.rewardCredited = true;
-                referral.bookingCompleted = true;
-                await referral.save();
-
-                // 🔹 Mark user first booking done
-                user.firstBookingDone = true;
-                await user.save();
-
-                console.log("Referral reward added successfully!");
-            }
-
-        } catch (err) {
-            console.error("Referral reward process failed:", err);
-        }
-
-
-        // ---------------- STORE COUPON USAGE ----------------
+        // 6. Referral & Coupon History
         if (appliedCoupon) {
-            appliedCoupon.usageHistory.push({
-                user_id,
-                booking_id: booking._id,
-                usedAt: new Date()
-            });
-
-            appliedCoupon.totalUsedCount += 1;
+            appliedCoupon.usageHistory.push({ user_id, booking_id: newBooking._id, usedAt: new Date() });
             await appliedCoupon.save();
         }
-
-        if (transactionId) {
-            await Transaction.findByIdAndUpdate(transactionId, { bookingId: booking._id });
+        try {
+            await sendBookingDataConfirmation(user.email, {
+                bookingId: newBooking._id,
+                amount: validatedTotalAmount,
+                date: bookingDay,
+                time: bookingTime,
+                guests: totalGuests
+            });
+        } catch (emailErr) {
+            console.error("Email sending failed:", emailErr);
         }
-
-        await sendBookingConfirmation(user.email, booking._id, "Business Name", table_id);
-
-        return res.status(201).send({
-            message: "Booking successful! Payment deducted from wallet.",
-            bookingId: booking._id,
-            transactionId
+        return res.status(201).json({
+            message: "Booking successful!",
+            bookingId: newBooking._id,
+            transactionId: deductionResult.transactionId
         });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).send({ message: "Server error during booking." });
+        console.error("CREATE BOOKING ERROR:", error);
+
+        // ⭐⭐⭐ REFUND LOGIC ⭐⭐⭐
+        // Agar deduction ho chuka tha lekin booking save nahi hui
+        if (deductionResult && deductionResult.success) {
+            console.log("Booking failed after payment. Refunding amount:", paymentAmount);
+            try {
+                // Aapka wallet update logic yahan aayega (credit back)
+                await Wallet.findOneAndUpdate(
+                    { userId: user_id },
+                    { $inc: { balance: paymentAmount } }
+                );
+                
+                // Transaction record mein 'failed_refund' entry bhi create kar sakte hain
+                const Transaction = require("../Models/TransactionModel");
+                await Transaction.create({
+                    userId: user_id,
+                    amount: paymentAmount,
+                    type: "credit",
+                    description: "REFUND: Booking system failure",
+                    status: "refunded"
+                });
+            } catch (refundError) {
+                console.error("CRITICAL: Refund failed for user:", user_id);
+            }
+        }
+
+        res.status(500).json({ message: "Booking failed. Any amount deducted has been refunded." });
     }
 };
 
@@ -657,6 +523,59 @@ exports.acceptBooking = async (req, res) => {
     }
 };
 
+// Get all bookings of the logged-in user
+exports.getUserBookings = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // 1. Aaj ki date range nikalna (IST/Local time ke hisaab se)
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // 2. Query with Population and Date Filter
+        const bookings = await Booking.find({
+            user_id: userId,
+            bookingDate: {
+                $gte: startOfDay,
+                $lte: endOfDay
+            }
+        })
+        .sort({ createdAt: -1 })
+        .populate('businessId') // Business ki saari details
+        .populate('branchId')   // Branch ki details (Location, etc.)
+        .populate('table_id')    // Table ki details (Price, Table Number)
+        .populate({
+            path: 'items_ordered.itemId', // Items ke andar ki details
+            model: 'Item'
+        })
+        .populate('couponId'); // Agar coupon use hua ho
+
+        if (!bookings || bookings.length === 0) {
+            return res.status(200).json({
+                success: true,
+                count: 0,
+                message: "Today you have no bookings.",
+                data: []
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            count: bookings.length,
+            data: bookings
+        });
+
+    } catch (error) {
+        console.error("GET USER BOOKINGS ERROR:", error);
+        res.status(500).json({
+            success: false,
+            message: "Server error while fetching today's bookings."
+        });
+    }
+};
 
 exports.getAllBookings = async (req, res) => {
     try {

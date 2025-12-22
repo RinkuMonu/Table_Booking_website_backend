@@ -6,12 +6,7 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-    },
-    businessId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Business",
-      required: true,
-    },
+    },    
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Branch",
