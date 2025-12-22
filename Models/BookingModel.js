@@ -1,42 +1,59 @@
 const mongoose = require("mongoose");
-const { itemSchema } = require("./ItemModel");
 
 const bookingSchema = new mongoose.Schema(
   {
-    table_id: {
+    businessId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Table",
+      ref: "Business",
+      required: false,
+    },
+    branchId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Branch",
       required: true,
     },
-
-    couponId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Coupon",
-      default: null
-    },
-
-    discountApplied: {
-      type: Number,
-      default: 0
-    },
-
     user_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-
-    // ✅ शेड्यूल की ID पहले से मौजूद है
-    schedule_id: {
+    table_id: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Schedule",
-      required: true, // इसे अनिवार्य (required: true) करना उचित हो सकता है
+      ref: "Table",
+      required: true,
     },
+    
+    // --- Schedule & Slot Details ---
+    slot_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Slot",
+      required: true,
+    },
+    bookingDay: { 
+      type: String, 
+      required: true, 
+      lowercase: true // e.g., "saturday"
+    },
+    timeSlotId: {
+      type: mongoose.Schema.Types.ObjectId, // Schedule ke andar specific slot ki ID
+      required: true,
+    },
+    bookingTime: { 
+      type: String, 
+      required: true // e.g., "10:00 AM"
+    },
+    totalGuests: {
+      type: Number,
+      required: true,
+      default: 2
+    },
+
+    // --- Order Details ---
     items_ordered: [
       {
         itemId: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "Item", // आइटम मॉडल का रेफरेंस 
+          ref: "Item",
           required: true
         },
         quantity: {
@@ -44,36 +61,42 @@ const bookingSchema = new mongoose.Schema(
           required: true,
           min: 1,
         },
+        // Agar variant use kar rahe ho toh variantId varna optional
         selected_variant_id: {
-          type: String, // Variant ID स्ट्रिंग हो सकती है, यदि वह Sub-document ID है
-          required: true,
+          type: String, 
         }
       },
     ],
 
+    // --- Pricing & Payments ---
+    totalAmount: { type: Number, default: 0 },
+    discountApplied: { type: Number, default: 0 },
+    couponId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Coupon",
+      default: null
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["unpaid", "paid", "refunded"],
+      default: "unpaid",
+    },
+
+    // --- Status Flags ---
     requestStatus: {
       type: String,
       enum: ["pending", "accepted", "denied"],
       default: "pending",
     },
-
-    refundMode: {
-      type: String,
-      enum: ["full", "partial"],
-      default: "partial"
-    },
-
     status: {
       type: String,
       enum: ["pending", "confirmed", "completed", "cancelled"],
       default: "pending",
     },
-    totalAmount: { type: Number, default: 0 },
-
-    paymentStatus: {
+    refundMode: {
       type: String,
-      enum: ["unpaid", "paid", "refunded"],
-      default: "unpaid",
+      enum: ["full", "partial"],
+      default: "partial"
     },
 
     bookingDate: { type: Date, default: Date.now },
