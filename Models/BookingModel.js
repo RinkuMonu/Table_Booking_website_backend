@@ -17,15 +17,6 @@ const bookingSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-
-    business_id: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Business",
-  required: true,
-},
-
-    // ✅ शेड्यूल की ID पहले से मौजूद है
-    schedule_id: {
     table_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Table",
