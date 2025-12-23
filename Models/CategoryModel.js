@@ -1,6 +1,11 @@
 const mongoose = require("mongoose");
 
 const categorySchema = new mongoose.Schema({
+    businessId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Business",
+      required: true,
+    },
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true },
     name: { type: String, required: true, trim: true },
     type: { type: String, enum: ["Food", "Drinks"], required: true },

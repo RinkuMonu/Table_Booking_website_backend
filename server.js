@@ -69,6 +69,7 @@
 
 
 require("dotenv").config();
+const mongoose = require("mongoose");
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
@@ -117,6 +118,10 @@ app.use("/api/slots", slotRoutes);
 // Default Route
 app.get("/", (req, res) => {
   res.send("🍽 Hotel Table Booking Backend is Running...");
+});
+mongoose.connection.on("connected", async () => {
+  await mongoose.model("Review").collection.dropIndexes();
+  console.log("All old Review indexes dropped!");
 });
 // Error Middleware (should be last)
 const { notFound, errorHandler } = require("./middleware/ErrorMiddleware");
