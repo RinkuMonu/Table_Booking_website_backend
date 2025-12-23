@@ -40,7 +40,7 @@ const bookingSchema = new mongoose.Schema(
     },
     bookingTime: { 
       type: String, 
-      required: true // e.g., "10:00 AM"
+      required: true
     },
     totalGuests: {
       type: Number,

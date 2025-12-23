@@ -964,24 +964,14 @@ exports.getRestaurants = async (req, res) => {
       limit = 6,
     } = req.query;
 
-    // Filters focused on Branch Schema
-    let branchFilter = {
-      isActive: true,
-    };
+    // 1. Initial Filters
+    let branchFilter = { isActive: true };
 
-    if (section === "popular") {
-      branchFilter.isPopular = true;
-    }
+    if (section === "popular") branchFilter.isPopular = true;
+    if (type) branchFilter.categoryType = new RegExp(type, "i");
+    if (rating) branchFilter.averageRating = { $gte: Number(rating) };
 
-    if (type) {
-      branchFilter.categoryType = new RegExp(type, "i");
-    }
-
-    if (rating) {
-      branchFilter.averageRating = { $gte: Number(rating) };
-    }
-
-    // Nearby Filter for Branch
+    // 2. Nearby Filter
     if (section === "nearby" && lat && lng) {
       branchFilter.location = {
         $near: {
@@ -994,10 +984,10 @@ exports.getRestaurants = async (req, res) => {
       };
     }
 
+    // 3. Keyword Search Logic (Branches + Items)
     let branchIds = new Set();
     let keywords = q ? q.trim().split(/\s+/) : [];
 
-    // Search in Branch and Items
     if (keywords.length) {
       const branchResults = await Branch.find({
         ...branchFilter,
@@ -1014,7 +1004,6 @@ exports.getRestaurants = async (req, res) => {
 
       branchResults.forEach((b) => branchIds.add(b._id.toString()));
 
-      // 🔹 Search in Items (linking back to branchId)
       const itemResults = await Item.find({
         isAvailable: true,
         $and: keywords.map((word) => ({
@@ -1031,7 +1020,7 @@ exports.getRestaurants = async (req, res) => {
       });
     }
 
-    /* FINAL QUERY Construction */
+    // 4. Final Query construction
     let finalFilter = { ...branchFilter };
     if (keywords.length) {
       finalFilter._id = { $in: [...branchIds] };
@@ -1039,18 +1028,46 @@ exports.getRestaurants = async (req, res) => {
 
     let sort = section === "popular" ? { averageRating: -1 } : { createdAt: -1 };
 
+    // 5. Fetch Branches with Populated Business
     const branches = await Branch.find(finalFilter)
       .sort(sort)
       .limit(Number(limit))
+      .populate("businessId") // Important for grouping
       .populate("categories")
       .populate("menuItems");
 
+    // 6. Grouping Logic (Reference from globalSearch)
+    const groupedData = branches.reduce((acc, branch) => {
+      // Branch ko plain object mein convert karein
+      const branchObj = branch.toObject();
+      const bizId = branchObj.businessId?._id?.toString();
+
+      if (!bizId) return acc;
+
+      if (!acc[bizId]) {
+        acc[bizId] = {
+          businessDetails: branchObj.businessId,
+          branches: [],
+        };
+      }
+
+      // Business info parent mein hai, toh branch object se hata sakte hain (optional)
+      const cleanedBranch = { ...branchObj };
+      delete cleanedBranch.businessId;
+
+      acc[bizId].branches.push(cleanedBranch);
+      return acc;
+    }, {});
+
+    const finalResult = Object.values(groupedData);
+
     return res.json({
       success: true,
-      count: branches.length,
-      data: branches,
+      count: finalResult.length, // Number of unique businesses
+      data: finalResult,
     });
   } catch (error) {
+    console.error("Error in getRestaurants:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
