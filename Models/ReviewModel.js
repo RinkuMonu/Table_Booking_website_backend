@@ -6,11 +6,13 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
-    },
+      index: true, // Performance ke liye sirf simple index rakhein
+    },    
     businessId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Business",
       required: true,
+      index: true,
     },
     branchId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -19,8 +21,8 @@ const reviewSchema = new mongoose.Schema(
     },
     foodItemId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "FoodItem",
-      default: null, // ✅ Optional
+      ref: "Item", // Check karein aapke model ka naam 'Item' hai ya 'FoodItem'
+      default: null,
     },
     rating: {
       type: Number,
@@ -47,5 +49,4 @@ const reviewSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
 module.exports = mongoose.model("Review", reviewSchema);

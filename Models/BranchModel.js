@@ -58,7 +58,6 @@ branchSchema.virtual("fullImageUrls").get(function () {
   if (!this.images || this.images.length === 0) {
     return [];
   }
-
   const BASE_URL = process.env.APP_URL || "http://localhost:3000";
 
   // Backslashes को forward slashes में बदलना और BASE_URL जोड़ना

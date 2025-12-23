@@ -6,6 +6,7 @@ const bookingController = require('../Controllers/BookingController');
 const { protect, authorizeRoles } = require('../Middleware/AuthMiddleware');
 
 router.post('/create',protect, bookingController.createBooking);
+router.get('/my-bookings', protect,authorizeRoles("user"), bookingController.getUserBookings);
 
 router.post('/checkin', bookingController.staffCheckIn);
 
@@ -25,7 +26,6 @@ router.put("/:id/deny", protect, authorizeRoles("admin", "vendor"), bookingContr
 
 router.get("/all", protect, authorizeRoles("admin", "vendor"), bookingController.getAllBookings);
 router.get("/:id", protect, authorizeRoles("admin", "vendor"), bookingController.getBookingById);
-
 
 
 module.exports = router;

@@ -10,7 +10,6 @@ const e = require("express");
 const EMAIL_API = "https://api.7uniqueverfiy.com/api/verify/email_checker_v1";
 const MOBILE_API = "https://api.7uniqueverfiy.com/api/verify/mobile_operator";
 
-
 exports.verifyMobile = async (req, res) => {
   try {
     const { mobile } = req.body;
@@ -474,16 +473,30 @@ exports.getAllUsers = async (req, res) => {
 
 exports.getUserById = async (req, res) => {
   try {
-    console.log(req.user)
-    const user = await User.findById(req.user._id);
-    console.log("Fetched User:", user);
+    const userId = req.user._id;
+
+    // 1. User ki details fetch karein
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json({ success: true, user });
+
+    // 2. User ka wallet fetch karein aur transactions ko bhi populate karein
+    const wallet = await Wallet.findOne({ userId: userId }).populate({
+      path: "transactions",
+      options: { sort: { createdAt: -1 } } // Latest transactions pehle dikhane ke liye
+    });
+
+    // 3. Response bhejein
+    res.json({
+      success: true,
+      user,
+      wallet: wallet || { balance: 0, transactions: [], message: "Wallet not initialized" }
+    });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("GET USER BY ID ERROR:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
-
 exports.updateUserProfile = async (req, res) => {
   if (!req.user || !req.user._id) {
     return res.status(401).json({ success: false, message: "Unauthorized. Please ensure a valid token is provided." });

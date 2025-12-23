@@ -1,13 +1,13 @@
 const Review = require("../Models/ReviewModel");
 const Business = require("../Models/BusinessModel");
-
+const Branch = require("../Models/BranchModel");
 
 // ✅ 1. Create Review (and Update Business Rating)
 exports.createReview = async (req, res) => {
   try {
-    const { businessId, foodItemId, rating, review } = req.body;
+    const { businessId,branchId, foodItemId, rating, review } = req.body;
 
-    if (!businessId || !rating || !review) {
+    if (!businessId ||!branchId || !rating || !review) {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
@@ -15,24 +15,25 @@ exports.createReview = async (req, res) => {
     const newReview = await Review.create({
       userId: req.user._id || req.user.id,
       businessId,
+      branchId,
       foodItemId: foodItemId || null,
       rating,
       review,
     });
 
     // Step 2️⃣ - Push review ID to Business
-    await Business.findByIdAndUpdate(
-      businessId,
+    await Branch.findByIdAndUpdate(
+      branchId,
       { $push: { reviews: newReview._id } },
       { new: true }
     );
 
-    // Step 3️⃣ - Recalculate Business averageRating & totalRatings
-    const allReviews = await Review.find({ businessId });
+    // Step 3️⃣ - Recalculate Branch averageRating & totalRatings
+    const allReviews = await Review.find({ branchId });
     const totalRatings = allReviews.length;
     const avgRating = allReviews.reduce((acc, curr) => acc + curr.rating, 0) / totalRatings;
 
-    await Business.findByIdAndUpdate(businessId, {
+    await Branch.findByIdAndUpdate(branchId, {
       averageRating: avgRating.toFixed(1),
       totalRatings,
     });

@@ -62,7 +62,7 @@ exports.deleteSlotSet = async (req, res) => {
     }
 };
 
-// ⏰ किसी विशिष्ट दिन के समय (times) को अपडेट करें
+    // ⏰ किसी विशिष्ट दिन के समय (times) को अपडेट करें
 exports.updateDayTimes = async (req, res) => {
     try {
         const { day, times } = req.body; // day: "monday", times: [...]
