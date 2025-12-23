@@ -29,7 +29,13 @@ const createBusinessData = async (req, res) => {
     const { model } = req.body;
     const SelectedModel = getModel(model);
     const payload = { ...req.body };
-
+    if (payload.variants && typeof payload.variants === 'string') {
+      try {
+        payload.variants = JSON.parse(payload.variants);
+      } catch (e) {
+        return res.status(400).json({ success: false, message: "Variants ka format sahi nahi hai" });
+      }
+    }
     // ✅ handle file upload
     if (req.files && req.files.length > 0) {
       payload.images = req.files.map((f) => f.path.replace(/\\/g, "/"));
