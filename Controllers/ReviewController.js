@@ -5,15 +5,16 @@ const Branch = require("../Models/BranchModel");
 // ✅ 1. Create Review (and Update Business Rating)
 exports.createReview = async (req, res) => {
   try {
-    const { branchId, foodItemId, rating, review } = req.body;
+    const { businessId,branchId, foodItemId, rating, review } = req.body;
 
-    if (!branchId || !rating || !review) {
+    if (!businessId ||!branchId || !rating || !review) {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
     // Step 1️⃣ - Create Review
     const newReview = await Review.create({
       userId: req.user._id || req.user.id,
+      businessId,
       branchId,
       foodItemId: foodItemId || null,
       rating,

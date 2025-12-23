@@ -12,6 +12,12 @@ const complimentarySchema = new mongoose.Schema({
 });
 
 const itemSchema = new mongoose.Schema({
+    businessId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Business",
+      required: true,
+    },
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true },
     categoryId: { 
         type: mongoose.Schema.Types.ObjectId, 
         ref: "Category", 

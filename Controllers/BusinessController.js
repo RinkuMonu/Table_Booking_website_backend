@@ -214,7 +214,7 @@ exports.addBranch = async (req, res) => {
     if (!business) return res.status(404).json({ message: "Business not found" });
 
     // branch fields may be in body; images in req.files
-    const { name, description, address, sameAsBranchId } = req.body;
+    const { name, description, address, sameAsBranchId,type } = req.body;
     let parsedAddress = address;
     if (typeof address === "string") {
       try { parsedAddress = JSON.parse(address); } catch (e) { parsedAddress = address; }
@@ -228,6 +228,7 @@ exports.addBranch = async (req, res) => {
       businessId: business._id,
       name: name || business.name,
       description,
+      categoryType: type || business.categoryType,
       images,
       address: parsedAddress,
       isActive: true,
@@ -404,13 +405,11 @@ exports.getBusinessById = async (req, res) => {
 
           const [categories, tables, reviews, schedules] = await Promise.all([
             CategoryModel.find({ branchId, isActive: true })
-              .populate({ path: 'categoryItems', match: { isAvailable: true } })
-              .lean(),
-            TableModel.find({ branchId }).lean(),
-            ReviewModel.find({ branchId }).populate("userId", "name").lean(),
+              .populate({ path: 'categoryItems', match: { isAvailable: true } }),
+            TableModel.find({ branchId }),
+            ReviewModel.find({ branchId }).populate("userId", "name"),
             ScheduleModel.find({ branchId })
               .populate("slotSetId")
-              .lean()
           ]);
 
           return {
@@ -700,7 +699,6 @@ exports.updateBusinessStatus = async (req, res) => {
 //       maxPrice,
 //       rating,
 //     } = req.query;
-//     console.log("Global Search Params:", req.query);
 //     // ----------------------------------
 //     // 🔹 BASE BUSINESS FILTER
 //     // ----------------------------------
@@ -957,37 +955,35 @@ exports.getRestaurants = async (req, res) => {
     const {
       q,
       section,        // popular | nearby | all
-      type,           // restro | bar | club | cafe
+      type,           // Restro | Bar | Club | Cafe
       lat,
       lng,
       radius = 5000,
       foodCategory,
-      minPrice,
-      maxPrice,
       rating,
       limit = 6,
     } = req.query;
-    console.log("Get Restaurants Params:", req.query);
 
-    let businessFilter = {
+    // Filters focused on Branch Schema
+    let branchFilter = {
       isActive: true,
-      requestStatus: "approved",
-      // isPopular: section == "popular" ? true : section == "nearby" ? null : false,
     };
-    if (section == "popular") {
-      businessFilter.isPopular = true;
+
+    if (section === "popular") {
+      branchFilter.isPopular = true;
     }
 
     if (type) {
-      businessFilter.categoryType = new RegExp(type, "i");
+      branchFilter.categoryType = new RegExp(type, "i");
     }
 
     if (rating) {
-      businessFilter.averageRating = { $gte: Number(rating) };
+      branchFilter.averageRating = { $gte: Number(rating) };
     }
 
+    // Nearby Filter for Branch
     if (section === "nearby" && lat && lng) {
-      businessFilter.location = {
+      branchFilter.location = {
         $near: {
           $geometry: {
             type: "Point",
@@ -997,17 +993,14 @@ exports.getRestaurants = async (req, res) => {
         },
       };
     }
-    console.log("businessFilter", businessFilter)
-    let keywords = [];
-    if (q) {
-      keywords = q.trim().split(/\s+/);
-    }
 
-    let businessIds = new Set();
+    let branchIds = new Set();
+    let keywords = q ? q.trim().split(/\s+/) : [];
 
+    // Search in Branch and Items
     if (keywords.length) {
-      const businessResults = await BusinessModel.find({
-        ...businessFilter,
+      const branchResults = await Branch.find({
+        ...branchFilter,
         $and: keywords.map((word) => ({
           $or: [
             { name: new RegExp(word, "i") },
@@ -1019,27 +1012,11 @@ exports.getRestaurants = async (req, res) => {
         })),
       }).select("_id");
 
-      businessResults.forEach((b) =>
-        businessIds.add(b._id.toString())
-      );
-    }
+      branchResults.forEach((b) => branchIds.add(b._id.toString()));
 
-    let itemFilter = { isAvailable: true };
-
-    if (foodCategory) {
-      itemFilter.category = new RegExp(foodCategory, "i");
-    }
-
-    if ((minPrice || maxPrice) && (q || foodCategory)) {
-      itemFilter["variants.price"] = {
-        ...(minPrice && { $gte: Number(minPrice) }),
-        ...(maxPrice && { $lte: Number(maxPrice) }),
-      };
-    }
-
-    if (keywords.length) {
+      // 🔹 Search in Items (linking back to branchId)
       const itemResults = await Item.find({
-        ...itemFilter,
+        isAvailable: true,
         $and: keywords.map((word) => ({
           $or: [
             { name: new RegExp(word, "i") },
@@ -1047,214 +1024,78 @@ exports.getRestaurants = async (req, res) => {
             { subcategory: new RegExp(word, "i") },
           ],
         })),
-      }).select("businessId");
+      }).select("branchId");
 
-      itemResults.forEach((i) =>
-        businessIds.add(i.businessId.toString())
-      );
+      itemResults.forEach((i) => {
+        if (i.branchId) branchIds.add(i.branchId.toString());
+      });
     }
 
-    /* ---------------- FINAL QUERY ---------------- */
-    let finalFilter = { ...businessFilter };
-
-    if (businessIds.size > 0) {
-      finalFilter._id = { $in: [...businessIds] };
+    /* FINAL QUERY Construction */
+    let finalFilter = { ...branchFilter };
+    if (keywords.length) {
+      finalFilter._id = { $in: [...branchIds] };
     }
 
-    /* ---------------- SORTING ---------------- */
-    let sort = {};
-    if (section === "popular") sort = { averageRating: -1 };
-    else sort = { createdAt: -1 };
+    let sort = section === "popular" ? { averageRating: -1 } : { createdAt: -1 };
 
-    const businesses = await BusinessModel.find(finalFilter)
+    const branches = await Branch.find(finalFilter)
       .sort(sort)
       .limit(Number(limit))
       .populate("categories")
-      .populate("menuItems")
-      .lean();
+      .populate("menuItems");
 
     return res.json({
       success: true,
-      count: businesses.length,
-      data: businesses,
+      count: branches.length,
+      data: branches,
     });
   } catch (error) {
-    console.error("Restaurant API Error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
 exports.globalSearch = async (req, res) => {
   try {
-    const {
-      q,
-      lat,
-      lng,
-      radius = 5, // km
-      type,
-      foodCategory,
-      minPrice,
-      maxPrice,
-      rating,
-    } = req.query;
+    const { q, lat, lng, radius = 5, type, foodCategory, rating, minPrice, maxPrice } = req.query;
+    
+    let branchFilter = { isActive: true };
 
-    console.log("Global Search Params:", req.query);
+    // Filters logic
+    if (q === "popular") branchFilter.isPopular = true;
+    if (type && type !== "null" && type !== "") branchFilter.categoryType = new RegExp(type, "i");
+    if (foodCategory && foodCategory !== "") branchFilter.foodType = new RegExp(foodCategory, "i");
+    if (rating) branchFilter.averageRating = { $gte: Number(rating) };
 
-    // -------------------------------
-    // BASE BUSINESS FILTER
-    // -------------------------------
-    let businessFilter = {
-      isActive: true,
-      requestStatus: "approved",
-    };
-
-    if (q === "popular") {
-      businessFilter.isPopular = true;
-    }
-
-    if (type) {
-      businessFilter.categoryType = new RegExp(type, "i");
-    }
-
-    if (foodCategory) {
-      businessFilter.foodType = new RegExp(foodCategory, "i");
-    }
-
-    if (rating) {
-      businessFilter.averageRating = { $gte: Number(rating) };
-    }
-
-    // -------------------------------
-    // NEARBY FILTER
-    // -------------------------------
-    if (lat && lng) {
-      businessFilter.location = {
+    if (lat && lng && lat !== "0" && lng !== "0") {
+      branchFilter.location = {
         $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [Number(lng), Number(lat)],
-          },
+          $geometry: { type: "Point", coordinates: [Number(lng), Number(lat)] },
           $maxDistance: Number(radius) * 1000,
         },
       };
     }
+    const branches = await Branch.find(branchFilter)
+      .populate("businessId categories menuItems");
 
-    // -------------------------------
-    // NO SEARCH TEXT
-    // -------------------------------
-    if (!q || q.trim() === "") {
-      const businesses = await BusinessModel.find(businessFilter)
-        .populate("categories")
-        .populate("menuItems")
-        .lean();
-
-      return res.json({
-        success: true,
-        count: businesses.length,
-        data: businesses,
-      });
-    }
-
-    // -------------------------------
-    // GLOBAL REGEX (KEY POINT)
-    // -------------------------------
-    const regex = new RegExp(q, "i");
-
-    // -------------------------------
-    // SEARCH IN ALL MODELS (PARALLEL)
-    // -------------------------------
-    const [businessResults, categoryResults, itemResults] =
-      await Promise.all([
-        // 🔹 BUSINESS SEARCH
-        BusinessModel.find({
-          ...businessFilter,
-          $or: [
-            { name: regex },
-            { description: regex },
-            { categoryType: regex },
-            { foodType: regex },
-            { "address.street": regex },
-            { "address.area": regex },
-            { "address.city": regex },
-          ],
-        }).select("_id"),
-
-        // 🔹 CATEGORY SEARCH → businessId
-        CategoryModel.find({
-          isActive: true,
-          $or: [
-            { name: regex },
-            { description: regex },
-            { type: regex },
-          ],
-        }).select("businessId"),
-
-        // 🔹 ITEM SEARCH → businessId
-        Item.find({
-          isAvailable: true,
-          $or: [
-            { name: regex },
-            { description: regex },
-            { category: regex },
-            { subcategory: regex },
-            { "variants.name": regex },
-          ],
-        }).select("businessId"),
-      ]);
-    // console.log("businessResults, categoryResults", itemResults)
-    console.log("businessResults", businessResults)
-    console.log("categoryResults", categoryResults)
-    console.log("itemResults", itemResults)
-
-    // -------------------------------
-    // UNIQUE BUSINESS IDS
-    // -------------------------------
-    const businessIds = new Set();
-
-    businessResults.forEach((b) =>
-      businessIds.add(b._id.toString())
-    );
-
-    categoryResults.forEach((c) => {
-      console.log("first", c._doc._id);
-      console.log("second", c._doc.businessId);
-      if (c._doc.businessId) {
-        businessIds.add(c._doc.businessId.toString());
+    // Grouping and Response logic (same as before)
+    const groupedData = branches.reduce((acc, branch) => {
+      const bizId = branch.businessId?._id?.toString();
+      if (!bizId) return acc;
+      if (!acc[bizId]) {
+        acc[bizId] = { businessDetails: branch.businessId, branches: [] };
       }
-    });
-    itemResults.forEach((c) => {
-      if (c._doc.businessId) {
-        businessIds.add(c._doc.businessId.toString());
-      }
-    });
+      const branchData = { ...branch };
+      delete branchData.businessId;
+      acc[bizId].branches.push(branchData);
+      return acc;
+    }, {});
 
-    // console.log("businessIds FINAL 👉", [...businessIds]);
-    // -------------------------------
-    // FINAL FETCH (ONLY BUSINESSES)
-    // -------------------------------
-    const businesses = await BusinessModel.find({
-      _id: { $in: [...businessIds] },
-      ...businessFilter,
-    })
-      .populate("categories")
-      .populate("menuItems")
-      .lean();
+    return res.json({ success: true, data: Object.values(groupedData) });
 
-    return res.json({
-      success: true,
-      query: q,
-      count: businesses.length,
-      data: businesses,
-    });
   } catch (error) {
     console.error("Global Search Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
