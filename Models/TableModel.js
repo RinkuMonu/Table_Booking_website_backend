@@ -15,7 +15,7 @@ const tableSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ["Normal", "Premium"],
+      enum: ["Normal", "Premium","Standard"],
       default: "Normal",
     },
     customCategory: String, // if vendor adds new one manually

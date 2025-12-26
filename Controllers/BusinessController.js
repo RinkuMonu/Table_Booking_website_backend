@@ -417,6 +417,7 @@ exports.getBusinessById = async (req, res) => {
               id: branch._id,
               name: branch.name,
               address: branch.address,
+              categoryType: branch.categoryType,
               images: branch.fullImageUrls
             },
             menu: categories.map(cat => ({
