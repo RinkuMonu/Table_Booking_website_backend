@@ -62,4 +62,17 @@ router.delete(
   cc.deleteCoupon
 );
 
+router.post(
+  "/assign",
+  protect,
+  authorizeRoles("admin", "vendor"),
+  cc.assignCoupon
+);
+
+// Get user coupons
+router.get(
+  "/my",
+  protect,
+  cc.getMyCoupons
+);
 module.exports = router;

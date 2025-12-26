@@ -7,7 +7,7 @@ const Setting = require("../Models/SettingModel");
 const { generateRefId } = require("../Utils/generateRefId");
 const { updateUserLocation } = require('../Utils/locationUtils');
 const e = require("express");
-// const EMAIL_API = "https://api.7uniqueverfiy.com/api/verify/email_checker_v1";
+const EMAIL_API = "https://api.7uniqueverfiy.com/api/verify/email_checker_v1";
 const MOBILE_API = "https://api.7uniqueverfiy.com/api/verify/mobile_operator";
 
 exports.verifyMobile = async (req, res) => {
