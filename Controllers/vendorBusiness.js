@@ -73,6 +73,7 @@ const createBusinessData = async (req, res) => {
 const updateBusinessData = async (req, res) => {
   try {
     const { model, id, ...updateData } = req.body;
+    console.log("Update Data:", updateData);
     const SelectedModel = getModel(model);
     if (!id) return res.status(400).json({ message: "Missing document id" });
 
@@ -170,8 +171,8 @@ const getAllBusinessData = async (req, res) => {
                 filter.businessId = vendorBusinessId; 
                 if (businessId && String(businessId) !== String(vendorBusinessId)) {
                     return res.status(403).json({ 
-                        success: false, 
-                        message: "Unauthorized access to this business data." 
+                      success: false, 
+                      message: "Unauthorized access to this business data." 
                     });
                 }
             } else {
