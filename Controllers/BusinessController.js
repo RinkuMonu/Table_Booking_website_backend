@@ -214,7 +214,7 @@ exports.addBranch = async (req, res) => {
     if (!business) return res.status(404).json({ message: "Business not found" });
 
     // branch fields may be in body; images in req.files
-    const { name, description, address, sameAsBranchId,type } = req.body;
+    const { name, description, address, sameAsBranchId,categoryType } = req.body;
     let parsedAddress = address;
     if (typeof address === "string") {
       try { parsedAddress = JSON.parse(address); } catch (e) { parsedAddress = address; }
@@ -228,7 +228,7 @@ exports.addBranch = async (req, res) => {
       businessId: business._id,
       name: name || business.name,
       description,
-      categoryType: type || business.categoryType,
+      categoryType: categoryType || business.categoryType,
       images,
       address: parsedAddress,
       isActive: true,
@@ -354,6 +354,7 @@ exports.updateBranch = async (req, res) => {
 
 
 exports.updateBusiness = async (req, res) => {
+  console.log("updateBusiness called with params:", req.params, "and body:", req.body);
   try {
     const { businessId } = req.params;
     if (!businessId) return res.status(400).json({ message: "businessId param required" });
@@ -416,6 +417,8 @@ exports.getBusinessById = async (req, res) => {
             branchInfo: {
               id: branch._id,
               name: branch.name,
+              description: branch.description,
+              foodType: branch.foodType,
               address: branch.address,
               categoryType: branch.categoryType,
               images: branch.fullImageUrls
@@ -444,6 +447,10 @@ exports.getBusinessById = async (req, res) => {
         businessName: business.name,
         businessId: businessId,
         businessImages: business.fullImageUrls,
+        businessDescription: business.description,
+        address: business.address,
+        businessActive: business.isActive,
+        requestStatus: business.requestStatus,
         branches: fullBranchData // Agar branch nahi hogi toh ye [] empty array bhejega
       }
     });
