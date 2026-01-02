@@ -1033,13 +1033,11 @@ exports.getRestaurants = async (req, res) => {
     if (keywords.length) {
       finalFilter._id = { $in: [...branchIds] };
     }
-
     let sort = section === "popular" ? { averageRating: -1 } : { createdAt: -1 };
 
     // 5. Fetch Branches with Populated Business
     const branches = await Branch.find(finalFilter)
       .sort(sort)
-      .limit(Number(limit))
       .populate("businessId") // Important for grouping
       .populate("categories")
       .populate("menuItems");
@@ -1066,7 +1064,6 @@ exports.getRestaurants = async (req, res) => {
       acc[bizId].branches.push(cleanedBranch);
       return acc;
     }, {});
-
     const finalResult = Object.values(groupedData);
 
     return res.json({
