@@ -93,7 +93,7 @@ const userSchema = new mongoose.Schema({
 
 userSchema.virtual("profilePictureUrl").get(function () {
   if (!this.profilePicture) return null;
-  const BASE_URL = process.env.APP_URL || "http://localhost:3000";
+  const BASE_URL = process.env.APP_URL || "https://deenitaindia.in";
   return `${BASE_URL}/${this.profilePicture}`;
 });
 
