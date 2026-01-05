@@ -124,10 +124,10 @@ mongoose.connection.on("connected", async () => {
   console.log("All old Review indexes dropped!");
 });
 // Error Middleware (should be last)
-const { notFound, errorHandler } = require("./middleware/ErrorMiddleware");
+const { notFound, errorHandler } = require("./Middleware/ErrorMiddleware");
 app.use(notFound);
 app.use(errorHandler);
 
 // Server listen
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5007;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
