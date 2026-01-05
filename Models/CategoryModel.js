@@ -28,9 +28,11 @@ categorySchema.virtual('categoryItems', {
   foreignField: 'categoryId'
 });
 
+
+
 categorySchema.virtual("fullImageUrl").get(function () {
   if (!this.image) return null;
-  const BASE_URL = process.env.APP_URL || "http://localhost:3000";
+  const BASE_URL = process.env.APP_URL || "https://deenitaindia.in";
   const cleanedPath = this.image.replace(/\\/g, "/");
   return `${BASE_URL}/${cleanedPath}`;
 });
