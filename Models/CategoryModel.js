@@ -28,6 +28,8 @@ categorySchema.virtual('categoryItems', {
   foreignField: 'categoryId'
 });
 
+
+
 categorySchema.virtual("fullImageUrl").get(function () {
   if (!this.image) return null;
   const BASE_URL = process.env.APP_URL || "https://deenitaindia.in";
