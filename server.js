@@ -123,6 +123,7 @@ mongoose.connection.on("connected", async () => {
   await mongoose.model("Review").collection.dropIndexes();
   console.log("All old Review indexes dropped!");
 });
+
 // Error Middleware (should be last)
 const { notFound, errorHandler } = require("./Middleware/ErrorMiddleware");
 app.use(notFound);
